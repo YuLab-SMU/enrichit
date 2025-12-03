@@ -66,16 +66,6 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         overlap[i] = count;
         de_size[i] = K;
         
-        // Fisher's exact test (one-sided greater)
-        // Contingency table:
-        //               In gene set | Not in gene set
-        // DE genes          a            b
-        // Non-DE genes      c            d
-        int a = count;
-        int b = K - a;
-        int c = M - a;
-        int d = N - M - b;
-        
         // Calculate Fisher's exact test p-value
         // Hypergeometric parameters:
         // m = total successes in population (gene set size in universe)
@@ -88,7 +78,7 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         int min_ak = std::min(m, k);
         
         double p_val = 0.0;
-        for (int x = a; x <= min_ak; ++x) {
+        for (int x = count; x <= min_ak; ++x) {
             p_val += dhyper(x, m, n, k);
         }
         p_value[i] = p_val;

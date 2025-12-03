@@ -4,9 +4,9 @@
 \name{enrichit-package}
 \alias{enrichit}
 \alias{enrichit-package}
-\title{enrichit: Fast Over-Representation Analysis (ORA) using C++}
+\title{enrichit: C++ Implementations of Functional Enrichment Analysis}
 \description{
-A fast implementation of Over-Representation Analysis (ORA) using C++ via Rcpp. Provides hypergeometric test (Fisher's exact test) and multiple testing correction.
+Fast implementations of functional enrichment analysis methods using C++ via Rcpp. Currently provides Over-Representation Analysis (ORA) and will support additional algorithms such as Gene Set Enrichment Analysis (GSEA) in the future.
 }
 \author{
 \strong{Maintainer}: Guangchuang Yu \email{guangchuangyu@gmail.com}
