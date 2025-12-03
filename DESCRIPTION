@@ -1,0 +1,16 @@
+Package: enrichit
+Title: C++ Implementations of Functional Enrichment Analysis
+Version: 0.0.1
+Authors@R: person(given = "Guangchuang", family = "Yu",
+                email = "guangchuangyu@gmail.com", role  = c("aut", "cre"))
+Description: Fast implementations of functional enrichment analysis methods using C++ via Rcpp.
+    Currently provides Over-Representation Analysis (ORA) and will support additional algorithms such as Gene Set Enrichment Analysis (GSEA) in the future.
+License: Artistic-2.0
+Imports: Rcpp (>= 1.0.10)
+LinkingTo: Rcpp
+Suggests: 
+    clusterProfiler,
+    testthat 
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
