@@ -6,7 +6,7 @@
 \alias{enrichit-package}
 \title{enrichit: C++ Implementations of Functional Enrichment Analysis}
 \description{
-Fast implementations of functional enrichment analysis methods using C++ via Rcpp. Currently provides Over-Representation Analysis (ORA) and will support additional algorithms such as Gene Set Enrichment Analysis (GSEA) in the future.
+Fast implementations of functional enrichment analysis methods using C++ via Rcpp. Currently provides Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA).
 }
 \author{
 \strong{Maintainer}: Guangchuang Yu \email{guangchuangyu@gmail.com}

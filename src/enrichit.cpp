@@ -1,4 +1,5 @@
 #include "enrichit.h"
+#include <sstream>
 
 namespace enrichit {
 
@@ -17,6 +18,8 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
     Rcpp::IntegerVector set_size(n_sets);
     Rcpp::IntegerVector de_size(n_sets);
     Rcpp::NumericVector p_value(n_sets);
+    Rcpp::CharacterVector gene_id(n_sets);
+    Rcpp::IntegerVector universe_size(n_sets);
     
     // Convert gene to hash set for fast lookup
     Rcpp::CharacterVector de_genes = Rcpp::unique(gene);
@@ -60,23 +63,26 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         
         int M = gs_bg.size(); // gene set size in universe
         set_size[i] = M;
+        universe_size[i] = N;
         
-        // Count overlap (DE genes in this gene set)
+        // Count overlap (DE genes in this gene set) and collect IDs
         int count = 0;
+        std::stringstream ss;
+        bool first = true;
+        
         for (const auto& gene : de_set) {
             if (gs_bg.find(gene) != gs_bg.end()) {
                 ++count;
+                if (!first) ss << "/";
+                ss << gene;
+                first = false;
             }
         }
         overlap[i] = count;
         de_size[i] = K;
+        gene_id[i] = ss.str();
         
         // Calculate Fisher's exact test p-value
-        // Hypergeometric parameters:
-        // m = total successes in population (gene set size in universe)
-        // n = total failures in population (genes NOT in gene set)
-        // k = number of draws (total DE genes in universe)
-        // x = observed successes (DE genes in gene set)
         int m = M;      // total in gene set (in universe)
         int n = N - M;  // total NOT in gene set (in universe)
         int k = K;      // total DE genes (in universe)
@@ -89,13 +95,15 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         p_value[i] = p_val;
     }
     
-    // Create result DataFrame (only p-values, no correction or significance filtering)
+    // Create result DataFrame
     Rcpp::DataFrame result = Rcpp::DataFrame::create(
         Rcpp::Named("GeneSet") = gene_set_names,
         Rcpp::Named("SetSize") = set_size,
         Rcpp::Named("DEInSet") = overlap,
         Rcpp::Named("DESize") = de_size,
-        Rcpp::Named("PValue") = p_value
+        Rcpp::Named("UniverseSize") = universe_size,
+        Rcpp::Named("PValue") = p_value,
+        Rcpp::Named("geneID") = gene_id
     );
     
     return result;
