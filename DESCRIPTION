@@ -13,7 +13,10 @@ Imports:
     yulab.utils (> 0.2.1)
 LinkingTo: Rcpp
 Suggests: 
+    AnnotationDbi,
     clusterProfiler,
+    DOSE,
+    gson,
     qvalue,
     testthat 
 Encoding: UTF-8

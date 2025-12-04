@@ -1,7 +1,7 @@
 # enrichit 0.0.3
 
 + mv helper functions and class definitions from `DOSE` to `enrichit` (2025-12-05, Fri)
-    - to extend this package as the base package for the clusterProfiler family
+    - to extend this package as the base package for the `clusterProfiler` family
 
 # enrichplot 0.0.2
 
