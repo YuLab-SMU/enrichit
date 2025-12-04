@@ -1,24 +1,22 @@
-##' interal method for enrichment analysis
-##'
-##' using the hypergeometric model
-##' @title enrich.internal
-##' @param gene a vector of entrez gene id.
-##' @param pvalueCutoff Cutoff value of pvalue.
-##' @param pAdjustMethod one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
-##' @param universe background genes, default is the intersection of the 'universe' with genes that have annotations. 
-##' Users can set `options(enrichment_force_universe = TRUE)` to force the 'universe' untouched.
-##' @param minGSSize minimal size of genes annotated by Ontology term for testing.
-##' @param maxGSSize maximal size of each geneSet for analyzing
-##' @param qvalueCutoff cutoff of qvalue
-##' @param gson ontology information
-##' @return  A `enrichResult` instance.
-##' @importClassesFrom methods data.frame
-##' @importFrom qvalue qvalue
-##' @importFrom methods new
-##' @importFrom stats phyper
-##' @importFrom stats p.adjust
-##' @keywords manip
-##' @author Guangchuang Yu <https://yulab-smu.top>
+#' interal method for enrichment analysis
+#'
+#' using the hypergeometric model
+#' @title enrich.internal
+#' @param gene a vector of entrez gene id.
+#' @param pvalueCutoff Cutoff value of pvalue.
+#' @param pAdjustMethod one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+#' @param universe background genes, default is the intersection of the 'universe' with genes that have annotations. 
+#' Users can set `options(enrichment_force_universe = TRUE)` to force the 'universe' untouched.
+#' @param minGSSize minimal size of genes annotated by Ontology term for testing.
+#' @param maxGSSize maximal size of each geneSet for analyzing
+#' @param qvalueCutoff cutoff of qvalue
+#' @param gson ontology information
+#' @return  A `enrichResult` instance.
+#' @importClassesFrom methods data.frame
+#' @importFrom methods new
+#' @importFrom stats p.adjust
+#' @keywords manip
+#' @author Guangchuang Yu <https://yulab-smu.top>
 enricher_internal <- function(gene,
                               pvalueCutoff,
                               pAdjustMethod="BH",
@@ -227,7 +225,7 @@ calculate_qvalue <- function(pvals) {
     if (length(pvals) == 0)
         return(numeric(0))
 
-    qobj <- tryCatch(qvalue(pvals, lambda=0.05, pi0.method="bootstrap"), error=function(e) NULL)
+    qobj <- tryCatch(qvalue::qvalue(pvals, lambda=0.05, pi0.method="bootstrap"), error=function(e) NULL)
 
     # if (class(qobj) == "qvalue") {
     if (inherits(qobj, "qvalue")) {

@@ -8,13 +8,13 @@ Description: Fast implementations of functional enrichment analysis methods usin
 License: Artistic-2.0
 Imports: 
     methods,
-    qvalue,
     Rcpp (>= 1.0.10),
     stats,
     yulab.utils (> 0.2.1)
 LinkingTo: Rcpp
 Suggests: 
     clusterProfiler,
+    qvalue,
     testthat 
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
