@@ -6,7 +6,11 @@ Authors@R: person(given = "Guangchuang", family = "Yu",
 Description: Fast implementations of functional enrichment analysis methods using C++ via Rcpp.
     Currently provides Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA).
 License: Artistic-2.0
-Imports: Rcpp (>= 1.0.10)
+Imports: 
+    methods,
+    qvalue,
+    Rcpp (>= 1.0.10),
+    yulab.utils
 LinkingTo: Rcpp
 Suggests: 
     clusterProfiler,
