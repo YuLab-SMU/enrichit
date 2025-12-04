@@ -5,3 +5,7 @@ ora_cpp <- function(gene, universe, gene_sets, gene_set_names) {
     .Call(`_enrichit_ora_cpp`, gene, universe, gene_sets, gene_set_names)
 }
 
+gsea_cpp <- function(stats, gene_sets, gene_set_names, nPerm = 1000L, exponent = 1.0, method = "sample") {
+    .Call(`_enrichit_gsea_cpp`, stats, gene_sets, gene_set_names, nPerm, exponent, method)
+}
+

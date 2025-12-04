@@ -2,6 +2,11 @@
 
 namespace enrichit {
 
+// Helper function for hypergeometric distribution
+double dhyper(int k, int m, int n, int k_plus_m_minus_n, bool log_p) {
+    return R::dhyper((double)k, (double)m, (double)n, (double)k_plus_m_minus_n, (int)log_p);
+}
+
 Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
                     const Rcpp::CharacterVector& universe,
                     const Rcpp::List& gene_sets,
