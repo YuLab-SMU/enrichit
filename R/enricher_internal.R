@@ -11,14 +11,14 @@
 ##' @param maxGSSize maximal size of each geneSet for analyzing
 ##' @param qvalueCutoff cutoff of qvalue
 ##' @param gson ontology information
-##' @return  A \code{enrichResult} instance.
+##' @return  A `enrichResult` instance.
 ##' @importClassesFrom methods data.frame
 ##' @importFrom qvalue qvalue
 ##' @importFrom methods new
 ##' @importFrom stats phyper
 ##' @importFrom stats p.adjust
 ##' @keywords manip
-##' @author Guangchuang Yu \url{https://yulab-smu.top}
+##' @author Guangchuang Yu <https://yulab-smu.top>
 enricher_internal <- function(gene,
                               pvalueCutoff,
                               pAdjustMethod="BH",
@@ -76,9 +76,7 @@ enricher_internal <- function(gene,
     }
     geneSets <- geneSets[idx]
 
-    # Call enrichit::ora
-    # enrichit::ora(gene, geneSets, universe)
-    ora_res <- enrichit::ora(gene, geneSets, universe = extID)
+    ora_res <- ora(gene, geneSets, universe = extID)
 
     if (is.null(ora_res) || nrow(ora_res) == 0) {
         return(NULL)
@@ -91,16 +89,12 @@ enricher_internal <- function(gene,
     ora_res$qvalue <- calculate_qvalue(ora_res$pvalue)
 
     # Calculate zScore
-    # Need k, M, n, N
-    # k = Count (in ora_res)
-    # N = length(extID)
-    # n = length(intersect(gene, extID))
-    # M = size of gene set (in universe)
-    
+    # Need k, M, n, N    
     N <- length(extID)
     n <- length(intersect(gene, extID))
     k <- ora_res$Count
     
+    # M = size of gene set (in universe)
     # Map ID to M
     # ora_res$ID should match names(geneSets)
     M <- sapply(geneSets[ora_res$ID], length)

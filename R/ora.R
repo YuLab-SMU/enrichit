@@ -7,14 +7,14 @@
 #' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
 #'
 #' @return A data.frame with columns:
-#' \item{ID}{Gene set ID}
-#' \item{GeneRatio}{Ratio of input genes that are in the gene set}
-#' \item{BgRatio}{Ratio of background genes that are in the gene set}
-#' \item{RichFactor}{Enrichment factor (Count/SetSize)}
-#' \item{FoldEnrichment}{Fold enrichment (GeneRatio/BgRatio)}
-#' \item{pvalue}{P-value from hypergeometric test}
-#' \item{geneID}{Genes in the gene set that overlap with the input list}
-#' \item{Count}{Number of overlapping genes}
+#' - **ID**: Gene set ID
+#' - **GeneRatio**: Ratio of input genes that are in the gene set
+#' - **BgRatio**: Ratio of background genes that are in the gene set
+#' - **RichFactor**: Enrichment factor (Count/SetSize)
+#' - **FoldEnrichment**: Fold enrichment (GeneRatio/BgRatio)
+#' - **pvalue**: P-value from hypergeometric test
+#' - **geneID**: Genes in the gene set that overlap with the input list
+#' - **Count**: Number of overlapping genes
 #'
 #' @export
 ora <- function(gene, universe, gene_sets) {

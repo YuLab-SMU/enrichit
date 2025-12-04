@@ -20,20 +20,22 @@ or "permute" for label permutation (slower, standard GSEA).}
 }
 \value{
 A data.frame with columns:
-\item{GeneSet}{Gene set name}
-\item{ES}{Enrichment Score}
-\item{NES}{Normalized Enrichment Score}
-\item{PValue}{Empirical p-value from permutation test}
-\item{Size}{Size of the gene set (number of genes found in genelist)}
-\item{rank}{Rank at which the maximum enrichment score is attained}
-\item{leading_edge}{Leading edge statistics (tags, list, signal)}
-\item{core_enrichment}{Genes in the leading edge, separated by '/'}
+\itemize{
+\item \strong{GeneSet}: Gene set name
+\item \strong{ES}: Enrichment Score
+\item \strong{NES}: Normalized Enrichment Score
+\item \strong{PValue}: Empirical p-value from permutation test
+\item \strong{Size}: Size of the gene set (number of genes found in genelist)
+\item \strong{rank}: Rank at which the maximum enrichment score is attained
+\item \strong{leading_edge}: Leading edge statistics (tags, list, signal)
+\item \strong{core_enrichment}: Genes in the leading edge, separated by '/'
+}
 }
 \description{
 Perform Gene Set Enrichment Analysis (GSEA) using a ranked gene list.
 }
 \examples{
-\dontrun{
+```{r}
 # Example data
 stats <- rnorm(1000)
 names(stats) <- paste0("Gene", 1:1000)
@@ -48,6 +50,6 @@ result <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100)
 
 # Use label permutation method
 result_perm <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100, method="permute")
-}
+```
 
 }

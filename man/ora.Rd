@@ -15,14 +15,16 @@ ora(gene, universe, gene_sets)
 }
 \value{
 A data.frame with columns:
-\item{ID}{Gene set ID}
-\item{GeneRatio}{Ratio of input genes that are in the gene set}
-\item{BgRatio}{Ratio of background genes that are in the gene set}
-\item{RichFactor}{Enrichment factor (Count/SetSize)}
-\item{FoldEnrichment}{Fold enrichment (GeneRatio/BgRatio)}
-\item{pvalue}{P-value from hypergeometric test}
-\item{geneID}{Genes in the gene set that overlap with the input list}
-\item{Count}{Number of overlapping genes}
+\itemize{
+\item \strong{ID}: Gene set ID
+\item \strong{GeneRatio}: Ratio of input genes that are in the gene set
+\item \strong{BgRatio}: Ratio of background genes that are in the gene set
+\item \strong{RichFactor}: Enrichment factor (Count/SetSize)
+\item \strong{FoldEnrichment}: Fold enrichment (GeneRatio/BgRatio)
+\item \strong{pvalue}: P-value from hypergeometric test
+\item \strong{geneID}: Genes in the gene set that overlap with the input list
+\item \strong{Count}: Number of overlapping genes
+}
 }
 \description{
 Perform Over-Representation Analysis (ORA) for a set of genes against a universe and gene sets.

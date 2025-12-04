@@ -1,6 +1,6 @@
 Package: enrichit
 Title: C++ Implementations of Functional Enrichment Analysis
-Version: 0.0.2
+Version: 0.0.3
 Authors@R: person(given = "Guangchuang", family = "Yu",
                 email = "guangchuangyu@gmail.com", role  = c("aut", "cre"))
 Description: Fast implementations of functional enrichment analysis methods using C++ via Rcpp.
@@ -10,7 +10,8 @@ Imports:
     methods,
     qvalue,
     Rcpp (>= 1.0.10),
-    yulab.utils
+    stats,
+    yulab.utils (> 0.2.1)
 LinkingTo: Rcpp
 Suggests: 
     clusterProfiler,
