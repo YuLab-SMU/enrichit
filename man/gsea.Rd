@@ -4,10 +4,10 @@
 \alias{gsea}
 \title{Gene Set Enrichment Analysis (GSEA)}
 \usage{
-gsea(genelist, gene_sets, nPerm = 1000, exponent = 1, method = "sample")
+gsea(geneList, gene_sets, nPerm = 1000, exponent = 1, method = "sample")
 }
 \arguments{
-\item{genelist}{A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.}
+\item{geneList}{A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.}
 
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
 
@@ -21,11 +21,11 @@ or "permute" for label permutation (slower, standard GSEA).}
 \value{
 A data.frame with columns:
 \itemize{
-\item \strong{GeneSet}: Gene set name
-\item \strong{ES}: Enrichment Score
+\item \strong{ID}: Gene set name
+\item \strong{enrichmentScore}: Enrichment Score
 \item \strong{NES}: Normalized Enrichment Score
-\item \strong{PValue}: Empirical p-value from permutation test
-\item \strong{Size}: Size of the gene set (number of genes found in genelist)
+\item \strong{pvalue}: Empirical p-value from permutation test
+\item \strong{setSize}: Size of the gene set (number of genes found in geneList)
 \item \strong{rank}: Rank at which the maximum enrichment score is attained
 \item \strong{leading_edge}: Leading edge statistics (tags, list, signal)
 \item \strong{core_enrichment}: Genes in the leading edge, separated by '/'
@@ -46,10 +46,10 @@ gs2 <- paste0("Gene", 500:550)
 gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2)
 
 # Use default sampling method
-result <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100)
+result <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100)
 
 # Use label permutation method
-result_perm <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100, method="permute")
+result_perm <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100, method="permute")
 ```
 
 }

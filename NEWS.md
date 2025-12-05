@@ -1,5 +1,7 @@
 # enrichit 0.0.3
 
++ implement `ora_gson` and `gsea_gson` (2025-12-05, Fri)
+    - as replacement for `enricher_internal` and `GSEA_internal`
 + mv helper functions and class definitions from `DOSE` to `enrichit` (2025-12-05, Fri)
     - to extend this package as the base package for the `clusterProfiler` family
 

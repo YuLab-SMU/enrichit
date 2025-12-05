@@ -2,7 +2,7 @@
 #'
 #' Perform Gene Set Enrichment Analysis (GSEA) using a ranked gene list.
 #'
-#' @param genelist A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.
+#' @param geneList A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.
 #' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
 #' @param nPerm Number of permutations for p-value calculation (default: 1000).
 #' @param exponent Weighting exponent for enrichment score (default: 1.0).
@@ -10,11 +10,11 @@
 #' or "permute" for label permutation (slower, standard GSEA).
 #'
 #' @return A data.frame with columns:
-#' - **GeneSet**: Gene set name
-#' - **ES**: Enrichment Score
+#' - **ID**: Gene set name
+#' - **enrichmentScore**: Enrichment Score
 #' - **NES**: Normalized Enrichment Score
-#' - **PValue**: Empirical p-value from permutation test
-#' - **Size**: Size of the gene set (number of genes found in genelist)
+#' - **pvalue**: Empirical p-value from permutation test
+#' - **setSize**: Size of the gene set (number of genes found in geneList)
 #' - **rank**: Rank at which the maximum enrichment score is attained
 #' - **leading_edge**: Leading edge statistics (tags, list, signal)
 #' - **core_enrichment**: Genes in the leading edge, separated by '/'
@@ -31,18 +31,18 @@
 #' gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2)
 #' 
 #' # Use default sampling method
-#' result <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100)
+#' result <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100)
 #' 
 #' # Use label permutation method
-#' result_perm <- gsea(genelist=stats, gene_sets=gene_sets, nPerm=100, method="permute")
+#' result_perm <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100, method="permute")
 #' ```
 #'
 #' @export
-gsea <- function(genelist, gene_sets, nPerm = 1000, exponent = 1.0, method = "sample") {
+gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sample") {
     
     # Validate inputs
-    if (!is.numeric(genelist) || is.null(names(genelist))) {
-        stop("genelist must be a named numeric vector")
+    if (!is.numeric(geneList) || is.null(names(geneList))) {
+        stop("geneList must be a named numeric vector")
     }
     if (!is.list(gene_sets) || is.null(names(gene_sets))) {
         stop("gene_sets must be a named list")
@@ -50,10 +50,10 @@ gsea <- function(genelist, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
     
     method <- match.arg(method, c("sample", "permute"))
     
-    # Ensure genelist is sorted
-    if (is.unsorted(rev(genelist))) {
-        warning("genelist is not sorted in descending order. Sorting it now.")
-        genelist <- sort(genelist, decreasing = TRUE)
+    # Ensure geneList is sorted
+    if (is.unsorted(rev(geneList))) {
+        warning("geneList is not sorted in descending order. Sorting it now.")
+        geneList <- sort(geneList, decreasing = TRUE)
     }
     
     # Ensure gene_sets are character vectors
@@ -67,8 +67,14 @@ gsea <- function(genelist, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
     gene_set_names <- names(gene_sets)
     
     # Call C++ function
-    result <- gsea_cpp(genelist, gene_sets, gene_set_names, nPerm, exponent, method)
+    result <- gsea_cpp(geneList, gene_sets, gene_set_names, nPerm, exponent, method)
     
+    # Rename columns to standard names
+    names(result)[names(result) == "GeneSet"] <- "ID"
+    names(result)[names(result) == "ES"] <- "enrichmentScore"
+    names(result)[names(result) == "PValue"] <- "pvalue"
+    names(result)[names(result) == "Size"] <- "setSize"
+
     # Sort by absolute NES (descending)
     if (nrow(result) > 0) {
         result <- result[order(abs(result$NES), decreasing = TRUE), ]
@@ -77,3 +83,139 @@ gsea <- function(genelist, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
     
     return(result)
 }
+
+
+#' generic function for gene set enrichment analysis
+#'
+#'
+#' @title gsea_gson
+#' @param geneList order ranked geneList
+#' @param gson GSON object
+#' @param nPerm Number of permutations for p-value calculation (default: 1000).
+#' @param exponent weight of each step
+#' @param minGSSize minimal size of each geneSet for analyzing
+#' @param maxGSSize maximal size of each geneSet for analyzing
+#' @param pvalueCutoff p value Cutoff
+#' @param pAdjustMethod p value adjustment method
+#' @param method Permutation method: "sample" (default) or "permute"
+#' @param verbose print message or not
+#' @param seed set seed inside the function to make result reproducible. FALSE by default.
+#' @return gseaResult object
+#' @author Guangchuang Yu
+#' @export
+gsea_gson <- function(geneList,
+                 gson,
+                 nPerm = 1000,
+                 exponent = 1.0,
+                 minGSSize = 10,
+                 maxGSSize = 500,
+                 pvalueCutoff = 0.05,
+                 pAdjustMethod = "BH",
+                 method = "sample",
+                 verbose = TRUE,
+                 seed = FALSE) {
+
+    if (!inherits(gson, "GSON")) {
+        stop("gson should be a GSON object")
+    }
+
+    if (seed != FALSE) {
+        set.seed(seed)
+    }
+
+    ## query external ID to Term ID
+    gene <- names(geneList)
+    
+    # Extract gene sets from GSON
+    gsid2gene <- gson@gsid2gene
+    
+    # ID Match Check
+    if (!check_gene_id(gene, gsid2gene)) {
+        return(NULL)
+    }
+
+    # Prepare Gene Sets
+    geneSets <- split(gsid2gene$gene, gsid2gene$gsid)
+    
+    # Filter by size
+    idx <- get_geneSet_index(geneSets, minGSSize, maxGSSize)
+    if (sum(idx) == 0) {
+        if (verbose) {
+            msg <- paste("No gene sets have size between", minGSSize, "and", maxGSSize, "...")
+            message(msg)
+            message("--> return NULL...")
+        }
+        return (NULL)
+    }
+    geneSets <- geneSets[idx]
+    
+    gsea_res <- gsea(geneList = geneList, 
+                     gene_sets = geneSets, 
+                     nPerm = nPerm, 
+                     exponent = exponent, 
+                     method = method)
+                     
+    if (is.null(gsea_res) || nrow(gsea_res) == 0) {
+        return(NULL)
+    }
+
+    # Add Description
+    gsid2name <- gson@gsid2name
+    if (!is.null(gsid2name) && "ID" %in% names(gsea_res)) {
+        description <- gsid2name$name[match(gsea_res$ID, gsid2name$gsid)]
+        na_idx <- is.na(description)
+        description[na_idx] <- gsea_res$ID[na_idx]
+        gsea_res$Description <- description
+    } else {
+        if (!"Description" %in% names(gsea_res)) {
+            gsea_res$Description <- gsea_res$ID
+        }
+    }
+
+    # Calculate p.adjust
+    gsea_res$p.adjust <- p.adjust(gsea_res$pvalue, method=pAdjustMethod)
+    
+    # Calculate qvalue
+    gsea_res$qvalues <- calculate_qvalue(gsea_res$pvalue)
+    
+    # Filter by pvalueCutoff
+    if (!is.null(pvalueCutoff)) {
+        gsea_res <- gsea_res[gsea_res$pvalue <= pvalueCutoff, ]
+    }
+    
+    if (nrow(gsea_res) == 0) {
+        return(NULL)
+    }
+    
+    # Reorder columns
+    expected_cols <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
+    other_cols <- setdiff(names(gsea_res), expected_cols)
+    gsea_res <- gsea_res[, c(expected_cols, other_cols)]
+    
+    # Set row names
+    rownames(gsea_res) <- gsea_res$ID
+    
+    params <- list(pvalueCutoff = pvalueCutoff,
+                   nPerm = nPerm,
+                   pAdjustMethod = pAdjustMethod,
+                   exponent = exponent,
+                   minGSSize = minGSSize,
+                   maxGSSize = maxGSSize)
+                   
+    res <- new("gseaResult",
+               result = gsea_res,
+               organism = if (!is.null(gson@species)) gson@species else "UNKNOWN",
+               setType = if (!is.null(gson@gsname)) gsub(".*;", "", gson@gsname) else "UNKNOWN",
+               geneSets = geneSets,
+               geneList = geneList,
+               keytype = if (!is.null(gson@keytype)) gson@keytype else "UNKNOWN",
+               permScores = matrix(), 
+               params = params,
+               gene2Symbol = character(), 
+               readable = FALSE
+              )
+              
+    return(res)
+}
+
+

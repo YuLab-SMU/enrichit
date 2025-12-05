@@ -1,7 +1,7 @@
 #' interal method for enrichment analysis
 #'
 #' using the hypergeometric model
-#' @title enrich.internal
+#' @title ora-gson
 #' @param gene a vector of entrez gene id.
 #' @param pvalueCutoff Cutoff value of pvalue.
 #' @param pAdjustMethod one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
@@ -17,7 +17,8 @@
 #' @importFrom stats p.adjust
 #' @keywords manip
 #' @author Guangchuang Yu <https://yulab-smu.top>
-enricher_internal <- function(gene,
+#' @export
+ora_gson <- function(gene,
                               pvalueCutoff,
                               pAdjustMethod="BH",
                               universe = NULL,

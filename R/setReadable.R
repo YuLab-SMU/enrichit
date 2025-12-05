@@ -11,7 +11,7 @@
 #' @export
 setReadable <- function(x, OrgDb, keyType="auto") {
     OrgDb <- load_OrgDb(OrgDb)
-    if (!'SYMBOL' %in% columns(OrgDb)) {
+    if (!'SYMBOL' %in% AnnotationDbi::columns(OrgDb)) {
         warning("Fail to convert input geneID to SYMBOL since no SYMBOL information available in the provided OrgDb...")
     }
 

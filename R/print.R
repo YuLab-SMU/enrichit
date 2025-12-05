@@ -63,6 +63,7 @@ setMethod("show", signature(object="enrichResult"),
         }
 )
 
+#' @importFrom methods .hasSlot
 .print_common_info <- function(object) {
     cat("#...@organism", "\t", object@organism, "\n")
     
