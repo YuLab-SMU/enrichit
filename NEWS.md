@@ -1,3 +1,12 @@
+# enrichit 0.0.4
+
++ implement a simplified adaptive early-stopping GSEA algorithm (2025-12-05, Fri)
+    - For each gene set:
+    - 1. Run initial batch (e.g., 1000 permutations)
+    - 2. If p-value > threshold (e.g., 0.05), stop
+    - 3. If significant, increase permutations geometrically (2x, 4x, 8x...)
+    - 4. Continue until p-value stabilizes or max permutations reached
+
 # enrichit 0.0.3
 
 + implement `ora_gson` and `gsea_gson` (2025-12-05, Fri)

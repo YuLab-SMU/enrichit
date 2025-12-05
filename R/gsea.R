@@ -4,10 +4,16 @@
 #'
 #' @param geneList A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.
 #' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
-#' @param nPerm Number of permutations for p-value calculation (default: 1000).
+#' @param nPerm Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.
 #' @param exponent Weighting exponent for enrichment score (default: 1.0).
 #' @param method Permutation method: "sample" (default) for random gene set sampling (faster, similar to fgsea), 
 #' or "permute" for label permutation (slower, standard GSEA).
+#' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values 
+#' on significant gene sets. Default: FALSE for backward compatibility.
+#' @param minPerm Minimum number of permutations for adaptive mode (default: 1000).
+#' @param maxPerm Maximum number of permutations for adaptive mode (default: 100000).
+#' @param pvalThreshold P-value threshold for early stopping in adaptive mode (default: 0.1). 
+#' Gene sets with p-value > threshold will stop after minPerm permutations.
 #'
 #' @return A data.frame with columns:
 #' - **ID**: Gene set name
@@ -15,12 +21,12 @@
 #' - **NES**: Normalized Enrichment Score
 #' - **pvalue**: Empirical p-value from permutation test
 #' - **setSize**: Size of the gene set (number of genes found in geneList)
+#' - **nPerm**: (adaptive mode only) Actual number of permutations used
 #' - **rank**: Rank at which the maximum enrichment score is attained
 #' - **leading_edge**: Leading edge statistics (tags, list, signal)
 #' - **core_enrichment**: Genes in the leading edge, separated by '/'
 #'
 #' @examples
-#' ```{r}
 #' # Example data
 #' stats <- rnorm(1000)
 #' names(stats) <- paste0("Gene", 1:1000)
@@ -30,15 +36,17 @@
 #' gs2 <- paste0("Gene", 500:550)
 #' gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2)
 #' 
-#' # Use default sampling method
+#' # Use default fixed permutation method
 #' result <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100)
 #' 
-#' # Use label permutation method
-#' result_perm <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100, method="permute")
-#' ```
+#' # Use adaptive permutation for more accurate p-values
+#' \dontrun{
+#' result_adaptive <- gsea(geneList=stats, gene_sets=gene_sets, adaptive=TRUE)
+#' }
 #'
 #' @export
-gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sample") {
+gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sample",
+                 adaptive = FALSE, minPerm = 1000, maxPerm = 100000, pvalThreshold = 0.1) {
     
     # Validate inputs
     if (!is.numeric(geneList) || is.null(names(geneList))) {
@@ -66,8 +74,13 @@ gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
     
     gene_set_names <- names(gene_sets)
     
-    # Call C++ function
-    result <- gsea_cpp(geneList, gene_sets, gene_set_names, nPerm, exponent, method)
+    # Call appropriate C++ function
+    if (adaptive) {
+        result <- gsea_adaptive_cpp(geneList, gene_sets, gene_set_names, 
+                                    minPerm, maxPerm, pvalThreshold, exponent, method)
+    } else {
+        result <- gsea_cpp(geneList, gene_sets, gene_set_names, nPerm, exponent, method)
+    }
     
     # Rename columns to standard names
     names(result)[names(result) == "GeneSet"] <- "ID"
@@ -91,15 +104,18 @@ gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
 #' @title gsea_gson
 #' @param geneList order ranked geneList
 #' @param gson GSON object
-#' @param nPerm Number of permutations for p-value calculation (default: 1000).
+#' @param nPerm Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.
 #' @param exponent weight of each step
 #' @param minGSSize minimal size of each geneSet for analyzing
 #' @param maxGSSize maximal size of each geneSet for analyzing
 #' @param pvalueCutoff p value Cutoff
 #' @param pAdjustMethod p value adjustment method
 #' @param method Permutation method: "sample" (default) or "permute"
+#' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation. Default: FALSE.
+#' @param minPerm Minimum permutations for adaptive mode (default: 1000).
+#' @param maxPerm Maximum permutations for adaptive mode (default: 100000).
+#' @param pvalThreshold P-value threshold for early stopping (default: 0.1).
 #' @param verbose print message or not
-#' @param seed set seed inside the function to make result reproducible. FALSE by default.
 #' @return gseaResult object
 #' @author Guangchuang Yu
 #' @export
@@ -112,15 +128,14 @@ gsea_gson <- function(geneList,
                  pvalueCutoff = 0.05,
                  pAdjustMethod = "BH",
                  method = "sample",
-                 verbose = TRUE,
-                 seed = FALSE) {
+                 adaptive = FALSE,
+                 minPerm = 1000,
+                 maxPerm = 100000,
+                 pvalThreshold = 0.1,
+                 verbose = TRUE) {
 
     if (!inherits(gson, "GSON")) {
         stop("gson should be a GSON object")
-    }
-
-    if (seed != FALSE) {
-        set.seed(seed)
     }
 
     ## query external ID to Term ID
@@ -153,7 +168,11 @@ gsea_gson <- function(geneList,
                      gene_sets = geneSets, 
                      nPerm = nPerm, 
                      exponent = exponent, 
-                     method = method)
+                     method = method,
+                     adaptive = adaptive,
+                     minPerm = minPerm,
+                     maxPerm = maxPerm,
+                     pvalThreshold = pvalThreshold)
                      
     if (is.null(gsea_res) || nrow(gsea_res) == 0) {
         return(NULL)

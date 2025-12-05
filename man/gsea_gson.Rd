@@ -14,8 +14,11 @@ gsea_gson(
   pvalueCutoff = 0.05,
   pAdjustMethod = "BH",
   method = "sample",
-  verbose = TRUE,
-  seed = FALSE
+  adaptive = FALSE,
+  minPerm = 1000,
+  maxPerm = 1e+05,
+  pvalThreshold = 0.1,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -23,7 +26,7 @@ gsea_gson(
 
 \item{gson}{GSON object}
 
-\item{nPerm}{Number of permutations for p-value calculation (default: 1000).}
+\item{nPerm}{Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.}
 
 \item{exponent}{weight of each step}
 
@@ -37,9 +40,15 @@ gsea_gson(
 
 \item{method}{Permutation method: "sample" (default) or "permute"}
 
-\item{verbose}{print message or not}
+\item{adaptive}{Logical. If TRUE, use adaptive early-stopping permutation. Default: FALSE.}
 
-\item{seed}{set seed inside the function to make result reproducible. FALSE by default.}
+\item{minPerm}{Minimum permutations for adaptive mode (default: 1000).}
+
+\item{maxPerm}{Maximum permutations for adaptive mode (default: 100000).}
+
+\item{pvalThreshold}{P-value threshold for early stopping (default: 0.1).}
+
+\item{verbose}{print message or not}
 }
 \value{
 gseaResult object

@@ -22,6 +22,16 @@ Rcpp::DataFrame gsea(const Rcpp::NumericVector& stats,
                      double exponent,
                      std::string method);
 
+// Adaptive GSEA function declaration
+Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
+                              const Rcpp::List& gene_sets,
+                              const Rcpp::CharacterVector& gene_set_names,
+                              int minPerm,
+                              int maxPerm,
+                              double pvalThreshold,
+                              double exponent,
+                              std::string method);
+
 // Helper function for hypergeometric distribution (log scale)
 double dhyper(int k, int m, int n, int k_plus_m_minus_n, bool log_p = false);
 

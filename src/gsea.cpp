@@ -4,6 +4,9 @@
 #include <iomanip>
 #include <numeric>
 #include <algorithm>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace enrichit {
 
@@ -368,6 +371,205 @@ Rcpp::DataFrame gsea(const Rcpp::NumericVector& stats,
 
 } // namespace enrichit
 
+// Adaptive GSEA with early-stopping and geometric batch scaling
+namespace enrichit {
+
+Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
+                              const Rcpp::List& gene_sets,
+                              const Rcpp::CharacterVector& gene_set_names,
+                              int minPerm,
+                              int maxPerm,
+                              double pvalThreshold,
+                              double exponent,
+                              std::string method) {
+    
+    int n_sets = gene_sets.size();
+    int n_genes = stats.size();
+    
+    std::vector<double> gene_stats = Rcpp::as<std::vector<double>>(stats);
+    Rcpp::CharacterVector gene_names = stats.names();
+    
+    std::unordered_map<std::string, int> gene_map;
+    for (int i = 0; i < n_genes; ++i) {
+        gene_map[Rcpp::as<std::string>(gene_names[i])] = i;
+    }
+    
+    std::vector<std::vector<bool>> gs_bools(n_sets, std::vector<bool>(n_genes, false));
+    std::vector<int> gs_sizes(n_sets, 0);
+    
+    for (int i = 0; i < n_sets; ++i) {
+        Rcpp::CharacterVector gs = gene_sets[i];
+        int count = 0;
+        for (int j = 0; j < gs.size(); ++j) {
+            std::string g = Rcpp::as<std::string>(gs[j]);
+            if (gene_map.find(g) != gene_map.end()) {
+                gs_bools[i][gene_map[g]] = true;
+                count++;
+            }
+        }
+        gs_sizes[i] = count;
+    }
+    
+    // Calculate observed ES and details for all gene sets
+    Rcpp::NumericVector es(n_sets);
+    Rcpp::IntegerVector rank(n_sets);
+    Rcpp::NumericVector tags(n_sets);
+    Rcpp::NumericVector list(n_sets);
+    Rcpp::NumericVector signal(n_sets);
+    Rcpp::CharacterVector core_enrichment(n_sets);
+    
+    for (int i = 0; i < n_sets; ++i) {
+        if (gs_sizes[i] > 0) {
+            GSEA_Result res = calculate_es_details(gene_stats, gs_bools[i], gene_names, exponent);
+            es[i] = res.ES;
+            rank[i] = res.rank;
+            tags[i] = res.tags;
+            list[i] = res.list;
+            signal[i] = res.signal;
+            core_enrichment[i] = res.core_enrichment;
+        } else {
+            es[i] = 0.0;
+            rank[i] = 0;
+            tags[i] = 0.0;
+            list[i] = 0.0;
+            signal[i] = 0.0;
+            core_enrichment[i] = "";
+        }
+    }
+    
+    // Adaptive permutation results
+    Rcpp::NumericVector pvalues(n_sets);
+    Rcpp::NumericVector nes(n_sets);
+    Rcpp::IntegerVector actual_perms(n_sets);
+    
+    // Process each gene set with adaptive permutation
+    #ifdef _OPENMP
+    #pragma omp parallel for schedule(dynamic)
+    #endif
+    for (int i = 0; i < n_sets; ++i) {
+        double obs_es = es[i];
+        
+        if (gs_sizes[i] == 0) {
+            pvalues[i] = 1.0;
+            nes[i] = 0.0;
+            actual_perms[i] = 0;
+            continue;
+        }
+        
+        // Thread-local RNG for thread safety
+        std::mt19937 rng(12345 + i * 1000);
+        
+        int total_perms = 0;
+        int count_better = 0;
+        double sum_pos_es = 0.0;
+        double sum_neg_es = 0.0;
+        int count_pos = 0;
+        int count_neg = 0;
+        
+        int batch_size = minPerm;
+        bool converged = false;
+        
+        // Prepare for sampling method
+        std::vector<int> universe(n_genes);
+        std::iota(universe.begin(), universe.end(), 0);
+        int k = gs_sizes[i];
+        std::vector<int> sample(k);
+        
+        // Prepare for permute method
+        std::vector<int> perm_idx(n_genes);
+        std::iota(perm_idx.begin(), perm_idx.end(), 0);
+        
+        while (!converged && total_perms < maxPerm) {
+            // Run batch of permutations
+            for (int p = 0; p < batch_size && (total_perms + p) < maxPerm; ++p) {
+                double perm_es;
+                
+                if (method == "permute") {
+                    std::shuffle(perm_idx.begin(), perm_idx.end(), rng);
+                    perm_es = calculate_es_permute(gene_stats, gs_bools[i], perm_idx, exponent);
+                } else {
+                    // Sample method - faster
+                    for (int j = 0; j < k; ++j) {
+                        std::uniform_int_distribution<> dis(j, n_genes - 1);
+                        int swap_idx = dis(rng);
+                        std::swap(universe[j], universe[swap_idx]);
+                        sample[j] = universe[j];
+                    }
+                    std::sort(sample.begin(), sample.end());
+                    perm_es = calculate_es_sparse(gene_stats, sample, exponent);
+                }
+                
+                // Update counts
+                if (obs_es > 0) {
+                    if (perm_es >= obs_es) count_better++;
+                    if (perm_es >= 0) { sum_pos_es += perm_es; count_pos++; }
+                } else {
+                    if (perm_es <= obs_es) count_better++;
+                    if (perm_es < 0) { sum_neg_es += perm_es; count_neg++; }
+                }
+            }
+            
+            total_perms += batch_size;
+            
+            // Calculate current p-value
+            double current_pval = (double)(count_better + 1) / (double)(total_perms + 1);
+            
+            // Early stopping conditions
+            if (total_perms >= minPerm) {
+                if (current_pval > pvalThreshold) {
+                    // Not significant, stop early
+                    converged = true;
+                } else if (total_perms >= maxPerm) {
+                    // Reached max, stop
+                    converged = true;
+                } else {
+                    // Significant, increase batch size geometrically
+                    batch_size = std::min(batch_size * 2, maxPerm - total_perms);
+                    if (batch_size <= 0) converged = true;
+                }
+            }
+        }
+        
+        // Final p-value and NES calculation
+        pvalues[i] = (double)(count_better + 1) / (double)(total_perms + 1);
+        actual_perms[i] = total_perms;
+        
+        if (obs_es > 0) {
+            double mean_pos = (count_pos > 0) ? (sum_pos_es / count_pos) : 1.0;
+            nes[i] = obs_es / mean_pos;
+        } else if (obs_es < 0) {
+            double mean_neg = (count_neg > 0) ? (sum_neg_es / count_neg) : -1.0;
+            nes[i] = obs_es / std::abs(mean_neg);
+        } else {
+            nes[i] = 0.0;
+        }
+    }
+    
+    // Create leading edge strings
+    Rcpp::CharacterVector leading_edge_str(n_sets);
+    for (int i = 0; i < n_sets; ++i) {
+        std::stringstream ss;
+        ss << "tags=" << std::round(tags[i] * 100) << "%"
+           << ", list=" << std::round(list[i] * 100) << "%"
+           << ", signal=" << std::round(signal[i] * 100) << "%";
+        leading_edge_str[i] = ss.str();
+    }
+    
+    return Rcpp::DataFrame::create(
+        Rcpp::Named("GeneSet") = gene_set_names,
+        Rcpp::Named("ES") = es,
+        Rcpp::Named("NES") = nes,
+        Rcpp::Named("PValue") = pvalues,
+        Rcpp::Named("Size") = Rcpp::wrap(gs_sizes),
+        Rcpp::Named("nPerm") = actual_perms,
+        Rcpp::Named("rank") = rank,
+        Rcpp::Named("leading_edge") = leading_edge_str,
+        Rcpp::Named("core_enrichment") = core_enrichment
+    );
+}
+
+} // namespace enrichit
+
 // [[Rcpp::export]]
 Rcpp::DataFrame gsea_cpp(const Rcpp::NumericVector& stats,
                          const Rcpp::List& gene_sets,
@@ -376,4 +578,16 @@ Rcpp::DataFrame gsea_cpp(const Rcpp::NumericVector& stats,
                          double exponent = 1.0,
                          std::string method = "sample") {
     return enrichit::gsea(stats, gene_sets, gene_set_names, nPerm, exponent, method);
+}
+
+// [[Rcpp::export]]
+Rcpp::DataFrame gsea_adaptive_cpp(const Rcpp::NumericVector& stats,
+                                  const Rcpp::List& gene_sets,
+                                  const Rcpp::CharacterVector& gene_set_names,
+                                  int minPerm = 1000,
+                                  int maxPerm = 100000,
+                                  double pvalThreshold = 0.1,
+                                  double exponent = 1.0,
+                                  std::string method = "sample") {
+    return enrichit::gsea_adaptive(stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method);
 }

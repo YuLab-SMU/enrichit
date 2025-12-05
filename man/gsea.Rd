@@ -4,19 +4,39 @@
 \alias{gsea}
 \title{Gene Set Enrichment Analysis (GSEA)}
 \usage{
-gsea(geneList, gene_sets, nPerm = 1000, exponent = 1, method = "sample")
+gsea(
+  geneList,
+  gene_sets,
+  nPerm = 1000,
+  exponent = 1,
+  method = "sample",
+  adaptive = FALSE,
+  minPerm = 1000,
+  maxPerm = 1e+05,
+  pvalThreshold = 0.1
+)
 }
 \arguments{
 \item{geneList}{A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.}
 
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
 
-\item{nPerm}{Number of permutations for p-value calculation (default: 1000).}
+\item{nPerm}{Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.}
 
 \item{exponent}{Weighting exponent for enrichment score (default: 1.0).}
 
 \item{method}{Permutation method: "sample" (default) for random gene set sampling (faster, similar to fgsea),
 or "permute" for label permutation (slower, standard GSEA).}
+
+\item{adaptive}{Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values
+on significant gene sets. Default: FALSE for backward compatibility.}
+
+\item{minPerm}{Minimum number of permutations for adaptive mode (default: 1000).}
+
+\item{maxPerm}{Maximum number of permutations for adaptive mode (default: 100000).}
+
+\item{pvalThreshold}{P-value threshold for early stopping in adaptive mode (default: 0.1).
+Gene sets with p-value > threshold will stop after minPerm permutations.}
 }
 \value{
 A data.frame with columns:
@@ -26,6 +46,7 @@ A data.frame with columns:
 \item \strong{NES}: Normalized Enrichment Score
 \item \strong{pvalue}: Empirical p-value from permutation test
 \item \strong{setSize}: Size of the gene set (number of genes found in geneList)
+\item \strong{nPerm}: (adaptive mode only) Actual number of permutations used
 \item \strong{rank}: Rank at which the maximum enrichment score is attained
 \item \strong{leading_edge}: Leading edge statistics (tags, list, signal)
 \item \strong{core_enrichment}: Genes in the leading edge, separated by '/'
@@ -35,7 +56,6 @@ A data.frame with columns:
 Perform Gene Set Enrichment Analysis (GSEA) using a ranked gene list.
 }
 \examples{
-```{r}
 # Example data
 stats <- rnorm(1000)
 names(stats) <- paste0("Gene", 1:1000)
@@ -45,11 +65,12 @@ gs1 <- paste0("Gene", 1:50)
 gs2 <- paste0("Gene", 500:550)
 gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2)
 
-# Use default sampling method
+# Use default fixed permutation method
 result <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100)
 
-# Use label permutation method
-result_perm <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100, method="permute")
-```
+# Use adaptive permutation for more accurate p-values
+\dontrun{
+result_adaptive <- gsea(geneList=stats, gene_sets=gene_sets, adaptive=TRUE)
+}
 
 }

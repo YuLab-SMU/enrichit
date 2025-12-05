@@ -27,23 +27,23 @@ test_that("GSEA function works correctly with both methods", {
   set.seed(123)
   
   # Test "sample" method (default)
-  res_sample <- gsea(genelist = stats, gene_sets = gene_sets, nPerm = 100, method = "sample")
+  res_sample <- gsea(geneList = stats, gene_sets = gene_sets, nPerm = 100, method = "sample")
   
   expect_true(is.data.frame(res_sample))
-  expect_true(all(c("GeneSet", "ES", "NES", "PValue", "Size", "rank", "leading_edge", "core_enrichment") %in% colnames(res_sample)))
+  expect_true(all(c("ID", "enrichmentScore", "NES", "pvalue", "setSize", "rank", "leading_edge", "core_enrichment") %in% colnames(res_sample)))
   
-  top_res <- res_sample[res_sample$GeneSet == "TopEnriched", ]
-  expect_gt(top_res$ES, 0)
-  expect_lt(top_res$PValue, 0.05)
+  top_res <- res_sample[res_sample$ID == "TopEnriched", ]
+  expect_gt(top_res$enrichmentScore, 0)
+  expect_lt(top_res$pvalue, 0.05)
   
   # Test "permute" method
-  res_permute <- gsea(genelist = stats, gene_sets = gene_sets, nPerm = 100, method = "permute")
+  res_permute <- gsea(geneList = stats, gene_sets = gene_sets, nPerm = 100, method = "permute")
   
   expect_true(is.data.frame(res_permute))
   
-  top_res_perm <- res_permute[res_permute$GeneSet == "TopEnriched", ]
-  expect_gt(top_res_perm$ES, 0)
-  expect_lt(top_res_perm$PValue, 0.05)
+  top_res_perm <- res_permute[res_permute$ID == "TopEnriched", ]
+  expect_gt(top_res_perm$enrichmentScore, 0)
+  expect_lt(top_res_perm$pvalue, 0.05)
   
   # Compare NES (sample method usually produces higher NES magnitude for enriched sets)
   # Note: with small nPerm and synthetic data, this might not always hold, but generally true.
@@ -51,5 +51,33 @@ test_that("GSEA function works correctly with both methods", {
   expect_equal(sign(top_res$NES), sign(top_res_perm$NES))
   
   # Check that method argument validation works
-  expect_error(gsea(stats, gene_sets, method = "invalid"))
+  expect_error(gsea(geneList = stats, gene_sets = gene_sets, method = "invalid"))
+})
+
+test_that("Adaptive GSEA works correctly", {
+  stats <- sort(rnorm(1000), decreasing = TRUE)
+  names(stats) <- paste0("Gene", 1:1000)
+  
+  # Highly enriched set
+  gs_top <- names(stats)[1:30]
+  # Random set
+  gs_random <- sample(names(stats), 30)
+  
+  gene_sets <- list(TopEnriched = gs_top, Random = gs_random)
+  
+  set.seed(42)
+  res_adaptive <- gsea(geneList = stats, gene_sets = gene_sets, adaptive = TRUE, 
+                       minPerm = 100, maxPerm = 10000, pvalThreshold = 0.2)
+  
+  expect_true(is.data.frame(res_adaptive))
+  expect_true("nPerm" %in% colnames(res_adaptive))
+  
+  # TopEnriched should have more permutations (significant)
+  top_nPerm <- res_adaptive[res_adaptive$ID == "TopEnriched", "nPerm"]
+  random_nPerm <- res_adaptive[res_adaptive$ID == "Random", "nPerm"]
+  
+  # Significant sets should use more permutations than initial minPerm
+  expect_gte(top_nPerm, 100)
+  # Random sets might stop early or not
+  expect_gte(random_nPerm, 100)
 })

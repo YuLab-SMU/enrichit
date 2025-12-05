@@ -16,10 +16,10 @@ geneID(x)
 geneID generic
 }
 \examples{
-```r
+\dontrun{
 data(geneList, package="DOSE")
 de <- names(geneList)[1:100]
 x <- DOSE::enrichDO(de)
 geneID(x)
-```
+}
 }
