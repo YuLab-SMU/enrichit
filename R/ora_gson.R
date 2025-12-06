@@ -77,6 +77,25 @@ ora_gson <- function(gene,
         return(NULL)
     }
 
+    # Rename columns to match expectation
+    if ("PValue" %in% names(ora_res)) {
+        names(ora_res)[names(ora_res) == "PValue"] <- "pvalue"
+    }
+    if ("GeneSet" %in% names(ora_res)) {
+        names(ora_res)[names(ora_res) == "GeneSet"] <- "ID"
+    }
+    if ("DEInSet" %in% names(ora_res)) {
+        names(ora_res)[names(ora_res) == "DEInSet"] <- "Count"
+    }
+    
+    # Calculate ratios
+    if (all(c("Count", "DESize") %in% names(ora_res))) {
+        ora_res$GeneRatio <- paste0(ora_res$Count, "/", ora_res$DESize)
+    }
+    if (all(c("SetSize", "UniverseSize") %in% names(ora_res))) {
+        ora_res$BgRatio <- paste0(ora_res$SetSize, "/", ora_res$UniverseSize)
+    }
+
     # Calculate p.adjust
     ora_res$p.adjust <- p.adjust(ora_res$pvalue, method=pAdjustMethod)
 
