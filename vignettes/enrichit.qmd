@@ -122,7 +122,7 @@ head(gsea_result)
 
 # Working with GSON
 
-`enrichit` works seamlessly with `GSON` objects, which are used to store gene set information along with metadata.
+`enrichit` works seamlessly with `GSON` objects, which are used to store gene set information along with metadata. The `GSON` class is defined in the `r yulab.utils::CRANpkg("gson")` package. It provides a structured way to handle gene sets, including gene identifiers, gene set names, and other associated information.
 
 ```{r eval=FALSE}
 # Assuming you have a GSON object 'g'
