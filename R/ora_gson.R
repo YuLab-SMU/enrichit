@@ -3,14 +3,10 @@
 #' using the hypergeometric model
 #' @title ora-gson
 #' @param gene a vector of entrez gene id.
-#' @param pvalueCutoff Cutoff value of pvalue.
-#' @param pAdjustMethod one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+#' @param qvalueCutoff cutoff of qvalue
 #' @param universe background genes, default is the intersection of the 'universe' with genes that have annotations. 
 #' Users can set `options(enrichment_force_universe = TRUE)` to force the 'universe' untouched.
-#' @param minGSSize minimal size of genes annotated by Ontology term for testing.
-#' @param maxGSSize maximal size of each geneSet for analyzing
-#' @param qvalueCutoff cutoff of qvalue
-#' @param gson ontology information
+#' @inheritParams enrichit_params
 #' @return  A `enrichResult` instance.
 #' @importClassesFrom methods data.frame
 #' @importFrom methods new
@@ -145,108 +141,3 @@ ora_gson <- function(gene,
 }
 
 
-get_enriched <- function(object) {
-
-    Over <- object@result
-
-    pvalueCutoff <- object@pvalueCutoff
-    if (length(pvalueCutoff) != 0) {
-        ## if groupGO result, numeric(0)
-        Over <- Over[ Over$pvalue <= pvalueCutoff, ]
-        Over <- Over[ Over$p.adjust <= pvalueCutoff, ]
-    }
-
-    qvalueCutoff <- object@qvalueCutoff
-    if (length(qvalueCutoff) != 0) {
-        if (! any(is.na(Over$qvalue))) {
-            if (length(qvalueCutoff) > 0)
-                Over <- Over[ Over$qvalue <= qvalueCutoff, ]
-        }
-    }
-
-    object@result <- Over
-    return(object)
-}
-
-
-TERM2NAME <- function(term, gson) {
-    if (inherits(gson, "environment")) { 
-        PATHID2NAME <- get("PATHID2NAME", envir = gson)
-        #if (is.null(PATHID2NAME) || is.na(PATHID2NAME)) {
-        if (is.null(PATHID2NAME) || all(is.na(PATHID2NAME))) {
-            return(as.character(term))
-        }
-        res <- PATHID2NAME[term]
-        i <-  is.na(res)
-        res[i] <- term[i]
-    } else if (inherits(gson, "GSON")) {
-        gsid2name <- gson@gsid2name
-        i <- match(term, gsid2name$gsid)
-        j <- !is.na(i)
-        res <- term
-        res[j] <- gsid2name$name[i[j]]
-    } else {
-        res <- as.character(term)
-    }
-
-    names(res) <- term
-    return(res) 
-}
-
-get_geneSet_index <- function(geneSets, minGSSize, maxGSSize) {
-    if (is.na(minGSSize) || is.null(minGSSize))
-        minGSSize <- 1
-    if (is.na(maxGSSize) || is.null(maxGSSize))
-        maxGSSize <- Inf #.Machine$integer.max
-
-    ## index of geneSets in used.
-    ## logical
-    geneSet_size <- sapply(geneSets, length)
-    idx <-  minGSSize <= geneSet_size & geneSet_size <= maxGSSize
-    return(idx)
-}
-
-TERMID2EXTID <- function(term, gson) {
-    if (inherits(gson, "GSON")) {
-        gsid2gene <- gson@gsid2gene
-        gsid2gene <- gsid2gene[gsid2gene$gsid %in% term, ]
-        res <- split(gsid2gene$gene, gsid2gene$gsid)
-        return(res)
-    } else if (inherits(gson, "environment")) {
-        PATHID2EXTID <- get("PATHID2EXTID", envir = gson)
-        res <- PATHID2EXTID[term]
-        return(res)
-    } else {
-        stop("gson not supported")
-    }
-}
-
-
-calculate_qvalue <- function(pvals) {
-    if (length(pvals) == 0)
-        return(numeric(0))
-
-    qobj <- tryCatch(qvalue::qvalue(pvals, lambda=0.05, pi0.method="bootstrap"), error=function(e) NULL)
-
-    # if (class(qobj) == "qvalue") {
-    if (inherits(qobj, "qvalue")) {
-        qvalues <- qobj$qvalues
-    } else {
-        qvalues <- NA
-    }
-    return(qvalues)
-}
-
-# https://github.com/YuLab-SMU/ReactomePA/issues/43
-#' @importFrom yulab.utils yulab_msg
-check_gene_id <- function(gene, gsid2gene) {
-    if (!any(gene %in% gsid2gene$gene)) {
-        yulab_msg("--> No gene can be mapped....")
-        sg <- unique(gsid2gene$gene[1:100])
-        sg <- sample(sg, min(length(sg), 6))
-        yulab_msg("--> Expected input gene ID: ", paste0(sg, collapse=','))
-        yulab_msg("--> return NULL...")
-        return(FALSE)
-    }
-    return(TRUE)
-}

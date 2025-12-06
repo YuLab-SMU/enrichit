@@ -11,12 +11,13 @@ gsea(
   maxGSSize = 500,
   nPerm = 1000,
   exponent = 1,
-  method = "sample",
+  method = "multilevel",
   adaptive = FALSE,
-  minPerm = 1000,
+  minPerm = 101,
   maxPerm = 1e+05,
   pvalThreshold = 0.1,
-  eps = 1e-10
+  eps = 1e-10,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -28,24 +29,23 @@ gsea(
 
 \item{maxGSSize}{maximal size of each geneSet for analyzing}
 
-\item{nPerm}{Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.}
+\item{nPerm}{Number of permutations for p-value calculation (default: 1000).}
 
 \item{exponent}{Weighting exponent for enrichment score (default: 1.0).}
 
-\item{method}{Permutation method: "sample" (default) for random gene set sampling (faster, similar to fgsea),
-"permute" for label permutation (slower, standard GSEA), or "multilevel" for adaptive multilevel splitting (most accurate for small p-values).}
+\item{method}{Permutation method.}
 
-\item{adaptive}{Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values
-on significant gene sets. Default: FALSE for backward compatibility.}
+\item{adaptive}{Logical. Use adaptive permutation.}
 
-\item{minPerm}{Minimum number of permutations for adaptive mode (default: 1000).}
+\item{minPerm}{Minimum permutations for adaptive mode.}
 
-\item{maxPerm}{Maximum number of permutations for adaptive mode (default: 100000).}
+\item{maxPerm}{Maximum permutations for adaptive mode.}
 
-\item{pvalThreshold}{P-value threshold for early stopping in adaptive mode (default: 0.1).
-Gene sets with p-value > threshold will stop after minPerm permutations.}
+\item{pvalThreshold}{P-value threshold for early stopping.}
 
 \item{eps}{Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.}
+
+\item{verbose}{Logical. Print progress messages.}
 }
 \value{
 A data.frame with columns:

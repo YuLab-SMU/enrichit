@@ -17,11 +17,11 @@ EsRuler::EsRuler(const std::vector<int64_t>& inpRanks,
                  double inpMovesScale,
                  bool inpLog,
                  int seed)
-    : ranks_(inpRanks),
+    : logStatus_(inpLog),
+      ranks_(inpRanks),
       sampleSize_(inpSampleSize),
       pathwaySize_(inpPathwaySize),
       movesScale_(inpMovesScale),
-      logStatus_(inpLog),
       incorrectRuler(false),
       oldSamplesStart(0),
       chunksNumber(0) {
@@ -548,7 +548,7 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
             }
         }
 
-        if (hasCand && check(score_t{static_cast<uint64_t>(NS), candY, n - k, candX})) {
+        if (hasCand && check(score_t{NS, candY, n - k, candX})) {
             ++moves;
             continue;
         }
@@ -621,7 +621,7 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
                 // fgsea: `curX += pos - last - 1` -> adds misses.
                 curX += pos - last - 1;
                 
-                if (check(score_t{static_cast<uint64_t>(NS), curY, n - k, curX})) {
+                if (check(score_t{NS, curY, n - k, curX})) {
                     ok = true;
                     hasCand = true;
                     candX = curX;

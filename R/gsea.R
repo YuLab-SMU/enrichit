@@ -2,20 +2,7 @@
 #'
 #' Perform Gene Set Enrichment Analysis (GSEA) using a ranked gene list.
 #'
-#' @param geneList A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.
-#' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
-#' @param minGSSize minimal size of each geneSet for analyzing
-#' @param maxGSSize maximal size of each geneSet for analyzing
-#' @param nPerm Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.
-#' @param exponent Weighting exponent for enrichment score (default: 1.0).
-#' @param method Permutation method: "sample" (default) for random gene set sampling, 
-#' "permute" for label permutation (slower, standard GSEA), or "multilevel" for adaptive multilevel splitting (most accurate for small p-values).
-#' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values 
-#' on significant gene sets. Default: FALSE for backward compatibility.
-#' @param minPerm Minimum number of permutations for adaptive mode (default: 1000).
-#' @param maxPerm Maximum number of permutations for adaptive mode (default: 100000).
-#' @param pvalThreshold P-value threshold for early stopping in adaptive mode (default: 0.1). 
-#' Gene sets with p-value > threshold will stop after minPerm permutations.
+#' @inheritParams enrichit_params
 #' @param eps Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.
 #'
 #' @return A data.frame with columns:
@@ -58,15 +45,15 @@ gsea <- function(geneList, gene_sets,
                  minPerm = 101, 
                  maxPerm = 100000, 
                  pvalThreshold = 0.1, 
-                 eps = 1e-10) {
+                 eps = 1e-10,
+                 verbose = TRUE) {
     
     # Validate inputs
     if (!is.numeric(geneList) || is.null(names(geneList))) {
         stop("geneList must be a named numeric vector")
     }
-    if (!is.list(gene_sets) || is.null(names(gene_sets))) {
-        stop("gene_sets must be a named list")
-    }
+    
+    gene_sets <- validate_gene_sets(gene_sets)
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
     
@@ -76,14 +63,6 @@ gsea <- function(geneList, gene_sets,
         geneList <- sort(geneList, decreasing = TRUE)
     }
     
-    # Ensure gene_sets are character vectors
-    gene_sets <- lapply(gene_sets, function(x) {
-        if (!is.character(x)) {
-            stop("Each element in gene_sets must be a character vector")
-        }
-        unique(x)
-    })
-
     # Filter by size
     idx <- get_geneSet_index(gene_sets, minGSSize, maxGSSize)
     if (sum(idx) == 0) {
@@ -130,20 +109,7 @@ gsea <- function(geneList, gene_sets,
 #'
 #'
 #' @title gsea_gson
-#' @param geneList order ranked geneList
-#' @param gson GSON object
-#' @param nPerm Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.
-#' @param exponent weight of each step
-#' @param minGSSize minimal size of each geneSet for analyzing
-#' @param maxGSSize maximal size of each geneSet for analyzing
-#' @param pvalueCutoff p value Cutoff
-#' @param pAdjustMethod p value adjustment method
-#' @param method Permutation method: "sample" (default), "permute", or "multilevel"
-#' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation. Default: FALSE.
-#' @param minPerm Minimum permutations for adaptive mode (default: 1000).
-#' @param maxPerm Maximum permutations for adaptive mode (default: 100000).
-#' @param pvalThreshold P-value threshold for early stopping (default: 0.1).
-#' @param verbose print message or not
+#' @inheritParams enrichit_params
 #' @return gseaResult object
 #' @author Guangchuang Yu
 #' @export
@@ -190,7 +156,8 @@ gsea_gson <- function(geneList,
                      adaptive = adaptive,
                      minPerm = minPerm,
                      maxPerm = maxPerm,
-                     pvalThreshold = pvalThreshold)
+                     pvalThreshold = pvalThreshold,
+                     verbose = verbose)
                      
     if (is.null(gsea_res) || nrow(gsea_res) == 0) {
         return(NULL)

@@ -4,7 +4,7 @@
 #'
 #' @param gene Character vector of differentially expressed genes (or gene list of interest).
 #' @param universe Character vector of background genes (e.g., all genes in the platform).
-#' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
+#' @inheritParams enrichit_params
 #'
 #' @return A data.frame with columns:
 #' \item{GeneSet}{Gene set name}
@@ -38,21 +38,12 @@ ora <- function(gene, gene_sets, universe) {
     if (!is.character(universe)) {
         stop("universe must be a character vector")
     }
-    if (!is.list(gene_sets) || is.null(names(gene_sets))) {
-        stop("gene_sets must be a named list")
-    }
+    
+    gene_sets <- validate_gene_sets(gene_sets)
     
     # Remove duplicates
     gene <- unique(gene)
     universe <- unique(universe)
-    
-    # Ensure gene_sets are character vectors
-    gene_sets <- lapply(gene_sets, function(x) {
-        if (!is.character(x)) {
-            stop("Each element in gene_sets must be a character vector")
-        }
-        unique(x)
-    })
     
     gene_set_names <- names(gene_sets)
     

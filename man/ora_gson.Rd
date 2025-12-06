@@ -18,20 +18,20 @@ ora_gson(
 \arguments{
 \item{gene}{a vector of entrez gene id.}
 
-\item{pvalueCutoff}{Cutoff value of pvalue.}
+\item{pvalueCutoff}{P-value cutoff.}
 
-\item{pAdjustMethod}{one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"}
+\item{pAdjustMethod}{P-value adjustment method (e.g., "BH").}
 
 \item{universe}{background genes, default is the intersection of the 'universe' with genes that have annotations.
 Users can set \code{options(enrichment_force_universe = TRUE)} to force the 'universe' untouched.}
 
-\item{minGSSize}{minimal size of genes annotated by Ontology term for testing.}
+\item{minGSSize}{minimal size of each geneSet for analyzing}
 
 \item{maxGSSize}{maximal size of each geneSet for analyzing}
 
 \item{qvalueCutoff}{cutoff of qvalue}
 
-\item{gson}{ontology information}
+\item{gson}{A GSON object containing gene set information.}
 }
 \value{
 A \code{enrichResult} instance.

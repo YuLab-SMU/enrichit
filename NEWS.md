@@ -1,3 +1,5 @@
+# enrichit 0.0.6
+
 # enrichit 0.0.5
 
 + implement multi-level GSEA algorithm (2025-12-06, Sat)
