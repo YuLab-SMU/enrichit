@@ -2,30 +2,41 @@
 % Please edit documentation in R/ora.R
 \name{ora}
 \alias{ora}
-\title{Over-Representation Analysis}
+\title{Over-Representation Analysis (ORA)}
 \usage{
-ora(gene, universe, gene_sets)
+ora(gene, gene_sets, universe)
 }
 \arguments{
-\item{gene}{A character vector of gene IDs (the query list).}
-
-\item{universe}{A character vector of gene IDs (the background universe).}
+\item{gene}{Character vector of differentially expressed genes (or gene list of interest).}
 
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
+
+\item{universe}{Character vector of background genes (e.g., all genes in the platform).}
 }
 \value{
 A data.frame with columns:
-\itemize{
-\item \strong{ID}: Gene set ID
-\item \strong{GeneRatio}: Ratio of input genes that are in the gene set
-\item \strong{BgRatio}: Ratio of background genes that are in the gene set
-\item \strong{RichFactor}: Enrichment factor (Count/SetSize)
-\item \strong{FoldEnrichment}: Fold enrichment (GeneRatio/BgRatio)
-\item \strong{pvalue}: P-value from hypergeometric test
-\item \strong{geneID}: Genes in the gene set that overlap with the input list
-\item \strong{Count}: Number of overlapping genes
-}
+\item{GeneSet}{Gene set name}
+\item{SetSize}{Number of genes in the gene set (intersected with universe)}
+\item{DEInSet}{Number of differentially expressed genes in the gene set}
+\item{DESize}{Total number of differentially expressed genes in universe}
+\item{PValue}{Raw p-value from hypergeometric test}
 }
 \description{
-Perform Over-Representation Analysis (ORA) for a set of genes against a universe and gene sets.
+Perform over-representation analysis using hypergeometric test (Fisher's exact test).
+}
+\examples{
+\dontrun{
+# Example data
+de_genes <- c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5")
+all_genes <- paste0("Gene", 1:1000)
+
+gs1 <- paste0("Gene", 1:50)
+gs2 <- paste0("Gene", 51:150)
+gs3 <- paste0("Gene", 151:300)
+gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2, Pathway3 = gs3)
+
+result <- ora(gene=de_genes, gene_sets=gene_sets, universe=all_genes)
+head(result)
+}
+
 }

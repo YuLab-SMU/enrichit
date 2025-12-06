@@ -4,16 +4,19 @@
 #'
 #' @param geneList A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.
 #' @param gene_sets A named list of gene sets. Each element is a character vector of genes.
+#' @param minGSSize minimal size of each geneSet for analyzing
+#' @param maxGSSize maximal size of each geneSet for analyzing
 #' @param nPerm Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.
 #' @param exponent Weighting exponent for enrichment score (default: 1.0).
-#' @param method Permutation method: "sample" (default) for random gene set sampling (faster, similar to fgsea), 
-#' or "permute" for label permutation (slower, standard GSEA).
+#' @param method Permutation method: "sample" (default) for random gene set sampling, 
+#' "permute" for label permutation (slower, standard GSEA), or "multilevel" for adaptive multilevel splitting (most accurate for small p-values).
 #' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values 
 #' on significant gene sets. Default: FALSE for backward compatibility.
 #' @param minPerm Minimum number of permutations for adaptive mode (default: 1000).
 #' @param maxPerm Maximum number of permutations for adaptive mode (default: 100000).
 #' @param pvalThreshold P-value threshold for early stopping in adaptive mode (default: 0.1). 
 #' Gene sets with p-value > threshold will stop after minPerm permutations.
+#' @param eps Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.
 #'
 #' @return A data.frame with columns:
 #' - **ID**: Gene set name
@@ -45,8 +48,17 @@
 #' }
 #'
 #' @export
-gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sample",
-                 adaptive = FALSE, minPerm = 1000, maxPerm = 100000, pvalThreshold = 0.1) {
+gsea <- function(geneList, gene_sets, 
+                 minGSSize = 10,
+                 maxGSSize = 500,
+                 nPerm = 1000, 
+                 exponent = 1.0, 
+                 method = "multilevel",
+                 adaptive = FALSE, 
+                 minPerm = 101, 
+                 maxPerm = 100000, 
+                 pvalThreshold = 0.1, 
+                 eps = 1e-10) {
     
     # Validate inputs
     if (!is.numeric(geneList) || is.null(names(geneList))) {
@@ -56,7 +68,7 @@ gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
         stop("gene_sets must be a named list")
     }
     
-    method <- match.arg(method, c("sample", "permute"))
+    method <- match.arg(method, c("sample", "permute", "multilevel"))
     
     # Ensure geneList is sorted
     if (is.unsorted(rev(geneList))) {
@@ -71,11 +83,27 @@ gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
         }
         unique(x)
     })
-    
+
+    # Filter by size
+    idx <- get_geneSet_index(gene_sets, minGSSize, maxGSSize)
+    if (sum(idx) == 0) {
+        if (verbose) {
+            msg <- paste("No gene sets have size between", minGSSize, "and", maxGSSize, "...")
+            message(msg)
+            message("--> return NULL...")
+        }
+        return (NULL)
+    }
+    gene_sets <- gene_sets[idx]   
+
     gene_set_names <- names(gene_sets)
     
     # Call appropriate C++ function
-    if (adaptive) {
+    if (method == "multilevel") {
+        result <- gsea_multilevel_cpp(geneList = geneList, gene_sets = gene_sets, gene_set_names = gene_set_names,
+                                 minPerm = minPerm, maxPerm = maxPerm, pvalThreshold = pvalThreshold,
+                                 exponent = exponent, method = method, eps = eps)
+    } else if (adaptive) {
         result <- gsea_adaptive_cpp(geneList, gene_sets, gene_set_names, 
                                     minPerm, maxPerm, pvalThreshold, exponent, method)
     } else {
@@ -110,7 +138,7 @@ gsea <- function(geneList, gene_sets, nPerm = 1000, exponent = 1.0, method = "sa
 #' @param maxGSSize maximal size of each geneSet for analyzing
 #' @param pvalueCutoff p value Cutoff
 #' @param pAdjustMethod p value adjustment method
-#' @param method Permutation method: "sample" (default) or "permute"
+#' @param method Permutation method: "sample" (default), "permute", or "multilevel"
 #' @param adaptive Logical. If TRUE, use adaptive early-stopping permutation. Default: FALSE.
 #' @param minPerm Minimum permutations for adaptive mode (default: 1000).
 #' @param maxPerm Maximum permutations for adaptive mode (default: 100000).
@@ -127,9 +155,9 @@ gsea_gson <- function(geneList,
                  maxGSSize = 500,
                  pvalueCutoff = 0.05,
                  pAdjustMethod = "BH",
-                 method = "sample",
+                 method = "multilevel",
                  adaptive = FALSE,
-                 minPerm = 1000,
+                 minPerm = 101,
                  maxPerm = 100000,
                  pvalThreshold = 0.1,
                  verbose = TRUE) {
@@ -152,20 +180,10 @@ gsea_gson <- function(geneList,
     # Prepare Gene Sets
     geneSets <- split(gsid2gene$gene, gsid2gene$gsid)
     
-    # Filter by size
-    idx <- get_geneSet_index(geneSets, minGSSize, maxGSSize)
-    if (sum(idx) == 0) {
-        if (verbose) {
-            msg <- paste("No gene sets have size between", minGSSize, "and", maxGSSize, "...")
-            message(msg)
-            message("--> return NULL...")
-        }
-        return (NULL)
-    }
-    geneSets <- geneSets[idx]
-    
     gsea_res <- gsea(geneList = geneList, 
                      gene_sets = geneSets, 
+                     minGSSize = minGSSize,
+                     maxGSSize = maxGSSize,
                      nPerm = nPerm, 
                      exponent = exponent, 
                      method = method,

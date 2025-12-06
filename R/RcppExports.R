@@ -13,3 +13,7 @@ gsea_adaptive_cpp <- function(stats, gene_sets, gene_set_names, minPerm = 1000L,
     .Call(`_enrichit_gsea_adaptive_cpp`, stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method)
 }
 
+gsea_multilevel_cpp <- function(geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps) {
+    .Call(`_enrichit_gsea_multilevel_cpp`, geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps)
+}
+

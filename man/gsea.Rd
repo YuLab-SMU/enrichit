@@ -7,13 +7,16 @@
 gsea(
   geneList,
   gene_sets,
+  minGSSize = 10,
+  maxGSSize = 500,
   nPerm = 1000,
   exponent = 1,
   method = "sample",
   adaptive = FALSE,
   minPerm = 1000,
   maxPerm = 1e+05,
-  pvalThreshold = 0.1
+  pvalThreshold = 0.1,
+  eps = 1e-10
 )
 }
 \arguments{
@@ -21,12 +24,16 @@ gsea(
 
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
 
+\item{minGSSize}{minimal size of each geneSet for analyzing}
+
+\item{maxGSSize}{maximal size of each geneSet for analyzing}
+
 \item{nPerm}{Number of permutations for p-value calculation (default: 1000). Only used when adaptive=FALSE.}
 
 \item{exponent}{Weighting exponent for enrichment score (default: 1.0).}
 
 \item{method}{Permutation method: "sample" (default) for random gene set sampling (faster, similar to fgsea),
-or "permute" for label permutation (slower, standard GSEA).}
+"permute" for label permutation (slower, standard GSEA), or "multilevel" for adaptive multilevel splitting (most accurate for small p-values).}
 
 \item{adaptive}{Logical. If TRUE, use adaptive early-stopping permutation for more accurate p-values
 on significant gene sets. Default: FALSE for backward compatibility.}
@@ -37,6 +44,8 @@ on significant gene sets. Default: FALSE for backward compatibility.}
 
 \item{pvalThreshold}{P-value threshold for early stopping in adaptive mode (default: 0.1).
 Gene sets with p-value > threshold will stop after minPerm permutations.}
+
+\item{eps}{Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.}
 }
 \value{
 A data.frame with columns:

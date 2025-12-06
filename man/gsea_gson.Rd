@@ -38,7 +38,7 @@ gsea_gson(
 
 \item{pAdjustMethod}{p value adjustment method}
 
-\item{method}{Permutation method: "sample" (default) or "permute"}
+\item{method}{Permutation method: "sample" (default), "permute", or "multilevel"}
 
 \item{adaptive}{Logical. If TRUE, use adaptive early-stopping permutation. Default: FALSE.}
 

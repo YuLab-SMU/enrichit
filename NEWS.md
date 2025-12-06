@@ -1,3 +1,7 @@
+# enrichit 0.0.5
+
++ implement multi-level GSEA algorithm (2025-12-06, Sat)
+    
 # enrichit 0.0.4
 
 + implement a simplified adaptive early-stopping GSEA algorithm (2025-12-05, Fri)
