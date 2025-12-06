@@ -1,0 +1,136 @@
+---
+title: "Introduction to enrichit"
+format: 
+    html:
+        theme: none
+        embed-resources: true
+        fontsize: 1.1em
+        linestretch: 1.7
+author: "Guangchuang Yu\\
+
+        School of Basic Medical Sciences, Southern Medical University"
+date: "`r Sys.Date()`"
+vignette: >
+  %\VignetteIndexEntry{enrichit}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+# Introduction
+
+Functional enrichment analysis is a staple in bioinformatics for interpreting lists of genes identified from omics experiments. `enrichit` provides fast, C++-based implementations of two of the most widely used methods:
+
+1.  **Over-Representation Analysis (ORA)**
+2.  **Gene Set Enrichment Analysis (GSEA)**
+
+The package is designed to be efficient and easy to integrate into existing workflows, with a focus on performance and standardized output formats.
+
+# Installation
+
+You can install `enrichit` from GitHub:
+
+```{r eval=FALSE}
+devtools::install_github("YuLab-SMU/enrichit")
+```
+
+# Over-Representation Analysis (ORA)
+
+ORA determines whether a set of genes of interest (e.g., differentially expressed genes) is enriched in a known gene set (e.g., a biological pathway) more than would be expected by chance.
+
+## Method
+
+`enrichit` implements ORA using the **hypergeometric distribution** (one-sided Fisher's exact test). The p-value is calculated as the probability of observing at least $k$ genes from the specific gene set in the selected list of $n$ genes, given a background population (universe) of $N$ genes containing $M$ genes from that set.
+
+$$
+p = 1 - \sum_{i=0}^{k-1} \frac{\binom{M}{i} \binom{N-M}{n-i}}{\binom{N}{n}}
+$$
+
+## Example
+
+```{r}
+library(enrichit)
+
+# Simulate a universe of 1000 genes
+universe <- paste0("Gene", 1:1000)
+
+# Define gene sets
+gene_sets <- list(
+  PathwayA = paste0("Gene", 1:50),       # Genes 1-50
+  PathwayB = paste0("Gene", 800:850)     # Genes 800-850
+)
+
+# Select 'significant' genes (e.g., top 20 genes)
+# PathwayA should be enriched
+sig_genes <- paste0("Gene", 1:20)
+
+# Run ORA
+ora_result <- ora(
+  gene = sig_genes,
+  gene_sets = gene_sets,
+  universe = universe
+)
+
+# View results
+as.data.frame(ora_result)
+```
+
+# Gene Set Enrichment Analysis (GSEA)
+
+GSEA evaluates whether a defined set of genes shows statistically significant, concordant differences between two biological states. Unlike ORA, GSEA uses the entire ranked list of genes, avoiding the need for arbitrary thresholds to select "significant" genes.
+
+## Method
+
+`enrichit` offers a fast C++ implementation of GSEA. It calculates an **Enrichment Score (ES)** that reflects the degree to which a gene set is over-represented at the top or bottom of a ranked list of genes.
+
+The package supports different methods for p-value calculation:
+
+1.  **Multilevel (`method = "multilevel"`)**: This is the default and recommended method. It uses an adaptive multi-level splitting Monte Carlo approach to estimate low p-values efficiently with high accuracy, similar to the `fgsea` package.
+2.  **Simple Permutation (`method = "permute"`)**: Standard permutation of gene labels.
+3.  **Sample Permutation (`method = "sample"`)**: Random sampling of gene sets (faster but less rigorous for some null hypotheses).
+
+## Example
+
+```{r}
+# Generate synthetic ranked gene list
+set.seed(42)
+geneList <- sort(rnorm(1000), decreasing = TRUE)
+names(geneList) <- paste0("Gene", 1:1000)
+
+# Define gene sets
+# PathwayTop is enriched at the top (positive ES)
+# PathwayBottom is enriched at the bottom (negative ES)
+gene_sets <- list(
+  PathwayTop = names(geneList)[1:50],
+  PathwayBottom = names(geneList)[951:1000],
+  PathwayRandom = sample(names(geneList), 50)
+)
+
+# Run GSEA using the multilevel method
+gsea_result <- gsea(
+  geneList = geneList,
+  gene_sets = gene_sets,
+  method = "multilevel",
+  nPerm = 1000,    # Base permutations
+  minGSSize = 10,
+  maxGSSize = 500
+)
+
+# View results
+head(gsea_result)
+```
+
+# Working with GSON
+
+`enrichit` works seamlessly with `GSON` objects, which are used to store gene set information along with metadata.
+
+```{r eval=FALSE}
+# Assuming you have a GSON object 'g'
+# result <- gsea_gson(geneList = geneList, gson = g)
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```

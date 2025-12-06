@@ -1,5 +1,7 @@
 # enrichit 0.0.6
 
++ add vignette (2025-12-07, Sun)
+
 # enrichit 0.0.5
 
 + implement multi-level GSEA algorithm (2025-12-06, Sat)
