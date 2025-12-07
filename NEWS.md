@@ -1,3 +1,8 @@
+# enrichit 0.0.7
+
++ add `gseaScores` function (2025-12-07, Sun)
+    - to calculate GSEA scores for a single gene set
+
 # enrichit 0.0.6
 
 + add vignette (2025-12-07, Sun)

@@ -17,3 +17,7 @@ gsea_multilevel_cpp <- function(geneList, gene_sets, gene_set_names, minPerm, ma
     .Call(`_enrichit_gsea_multilevel_cpp`, geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps)
 }
 
+gsea_scores_cpp <- function(stats, in_set, exponent) {
+    .Call(`_enrichit_gsea_scores_cpp`, stats, in_set, exponent)
+}
+

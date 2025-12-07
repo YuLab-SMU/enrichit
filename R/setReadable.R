@@ -7,7 +7,7 @@
 #' @param keyType keyType of gene
 #' @return enrichResult Object
 #' @author Guangchuang Yu
-#' @importFrom yulab.utils load_OrgDb
+# @importFrom yulab.utils load_OrgDb
 #' @export
 setReadable <- function(x, OrgDb, keyType="auto") {
     OrgDb <- load_OrgDb(OrgDb)
@@ -107,7 +107,7 @@ setReadable <- function(x, OrgDb, keyType="auto") {
 #' @param geneID entrez gene ID
 #' @param keytype keytype
 #' @return gene symbol
-#' @importFrom yulab.utils load_OrgDb
+# @importFrom yulab.utils load_OrgDb
 #' @export
 #' @author Guangchuang Yu \url{https://yulab-smu.top}
 EXTID2NAME <- function(OrgDb, geneID, keytype) {
@@ -134,4 +134,18 @@ EXTID2NAME <- function(OrgDb, geneID, keytype) {
     gn <- gn.df$SYMBOL
     names(gn) <- gn.df$GeneID
     return(gn)
+}
+
+
+# to remove and imported from yulab.utils
+load_OrgDb <- function(OrgDb) {
+    #if (is(OrgDb, "character")) {
+    #    require(OrgDb, character.only = TRUE)
+    #    OrgDb <- eval(parse(text=OrgDb))
+    #}
+    if (is(OrgDb, "character")) {
+        OrgDb <- utils::getFromNamespace(OrgDb, OrgDb)
+    } 
+    
+    return(OrgDb)
 }

@@ -77,12 +77,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// gsea_scores_cpp
+Rcpp::DataFrame gsea_scores_cpp(const Rcpp::NumericVector& stats, const Rcpp::LogicalVector& in_set, double exponent);
+RcppExport SEXP _enrichit_gsea_scores_cpp(SEXP statsSEXP, SEXP in_setSEXP, SEXP exponentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type stats(statsSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::LogicalVector& >::type in_set(in_setSEXP);
+    Rcpp::traits::input_parameter< double >::type exponent(exponentSEXP);
+    rcpp_result_gen = Rcpp::wrap(gsea_scores_cpp(stats, in_set, exponent));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_ora_cpp", (DL_FUNC) &_enrichit_ora_cpp, 4},
     {"_enrichit_gsea_cpp", (DL_FUNC) &_enrichit_gsea_cpp, 6},
     {"_enrichit_gsea_adaptive_cpp", (DL_FUNC) &_enrichit_gsea_adaptive_cpp, 8},
     {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 9},
+    {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
     {NULL, NULL, 0}
 };
 
