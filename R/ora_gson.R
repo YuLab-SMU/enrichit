@@ -96,6 +96,12 @@ ora_gson <- function(gene,
         ora_res$BgRatio <- paste0(ora_res$SetSize, "/", ora_res$UniverseSize)
     }
 
+    # Calculate RichFactor and FoldEnrichment
+    if (all(c("Count", "SetSize", "DESize", "UniverseSize") %in% names(ora_res))) {
+        ora_res$RichFactor <- ora_res$Count / ora_res$SetSize
+        ora_res$FoldEnrichment <- (ora_res$Count / ora_res$DESize) / (ora_res$SetSize / ora_res$UniverseSize)
+    }
+
     # Calculate p.adjust
     ora_res$p.adjust <- p.adjust(ora_res$pvalue, method=pAdjustMethod)
 
@@ -132,7 +138,7 @@ ora_gson <- function(gene,
     }
 
     # Reorder columns
-    expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
+    expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor", "FoldEnrichment", "zScore", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
     other_cols <- setdiff(names(ora_res), expected_cols)
     ora_res <- ora_res[, c(expected_cols, other_cols)]
     
