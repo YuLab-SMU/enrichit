@@ -46,48 +46,43 @@ public:
     
     // Comparison operators (for sorting and threshold checking)
     bool operator<(const score_t& other) const {
-        // Compare: numerator/NS - nHit/nMiss vs other.numerator/other.NS - other.nHit/other.nMiss
-        // Cross-multiply: numerator*nMiss*other.NS*other.nMiss - nHit*NS*other.NS*other.nMiss < ...
-        // Simplify: (numerator*nMiss - nHit*NS) / (NS*nMiss) < (other.numerator*other.nMiss - other.nHit*other.NS) / (other.NS*other.nMiss)
-        // Since NS and nMiss are positive (and same sign), we can cross multiply denominators.
-        // lhs = (numerator*nMiss - nHit*NS) * (other.NS*other.nMiss)
-        // rhs = (other.numerator*other.nMiss - other.nHit*other.NS) * (NS*nMiss)
-        
-        // Note: nMiss is constant (n - k) for all samples in GSEA (usually).
-        // If nMiss is constant, we can simplify:
-        // (numerator*m - nHit*NS) * (other.NS*m) < (other.numerator*m - other.nHit*other.NS) * (NS*m)
-        // Divide by m (if m > 0):
-        // (numerator*m - nHit*NS) * other.NS < (other.numerator*m - other.nHit*other.NS) * NS
-        
-        // However, to be generic and safe:
-        // We use __int128 to avoid overflow during cross-multiplication if needed, 
-        // or just double if we trust precision (53 bits). 
-        // NS is 2^30. numerator is 2^30. Product is 2^60. Fits in int64? No.
-        // But wait, score_t comparison in fgsea uses integer arithmetic?
-        // If they use int64, they must ensure values fit.
-        // Maybe they assume nMiss is small?
-        
-        // Let's stick to double for safety but ensure exact equality checks.
-        return getDouble() < other.getDouble();
+        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
+        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
+        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
+        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
+        return (lhs_phit - lhs_pmiss) < (rhs_phit - rhs_pmiss);
     }
     
     bool operator<=(const score_t& other) const {
-        return getDouble() <= other.getDouble();
+        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
+        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
+        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
+        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
+        return (lhs_phit - lhs_pmiss) <= (rhs_phit - rhs_pmiss);
     }
     
     bool operator>(const score_t& other) const {
-        return getDouble() > other.getDouble();
+        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
+        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
+        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
+        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
+        return (lhs_phit - lhs_pmiss) > (rhs_phit - rhs_pmiss);
     }
     
     bool operator>=(const score_t& other) const {
-        return getDouble() >= other.getDouble();
+        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
+        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
+        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
+        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
+        return (lhs_phit - lhs_pmiss) >= (rhs_phit - rhs_pmiss);
     }
     
     bool operator==(const score_t& other) const {
-        // For hash consistency, we need strict equality.
-        // Using epsilon might be safer for "effective" equality, 
-        // but hash check requires logical equality.
-        return getDouble() == other.getDouble();
+        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
+        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
+        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
+        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
+        return (lhs_phit - lhs_pmiss) == (rhs_phit - rhs_pmiss);
     }
 };
 

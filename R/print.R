@@ -1,15 +1,15 @@
-##' show method for `gseaResult` instance
-##'
-##' @name show
-##' @docType methods
-##' @rdname show-methods
-##'
-##' @title show method
-##' @return message
-##' @importFrom methods show
-##' @exportMethod show
-##' @usage show(object)
-##' @author Guangchuang Yu <https://yulab-smu.top>
+#' show method for `gseaResult` instance
+#'
+#' @name show
+#' @docType methods
+#' @rdname show-methods
+#'
+#' @title show method
+#' @return message
+#' @importFrom methods show
+#' @exportMethod show
+#' @usage show(object)
+#' @author Guangchuang Yu <https://yulab-smu.top>
 setMethod("show", signature(object="gseaResult"),
           function (object){
               params <- object@params
@@ -29,20 +29,20 @@ setMethod("show", signature(object="gseaResult"),
 )
 
 
-##' show method for `enrichResult` instance
-##'
-##' @name show
-##' @docType methods
-##' @rdname show-methods
-##'
-##' @title show method
-##' @param object A `enrichResult` instance.
-##' @return message
-##' @importFrom utils str
-##' @importFrom methods show
-##' @exportMethod show
-##' @usage show(object)
-##' @author Guangchuang Yu <https://yulab-smu.top>
+#' show method for `enrichResult` instance
+#'
+#' @name show
+#' @docType methods
+#' @rdname show-methods
+#'
+#' @title show method
+#' @param object A `enrichResult` instance.
+#' @return message
+#' @importFrom utils str
+#' @importFrom methods show
+#' @exportMethod show
+#' @usage show(object)
+#' @author Guangchuang Yu <https://yulab-smu.top>
 setMethod("show", signature(object="enrichResult"),
         function (object){
               

@@ -79,12 +79,8 @@ public:
     
     ~EsRuler();
     
-    // Extend the multilevel structure to cover ES
-    void extend(double ES, int seed, double eps);
-    
-    // Get p-value for a given ES
-    // Returns: (pvalue, isCpGeHalf, log2err)
-    std::tuple<double, bool, double> getPvalue(double ES, double eps, bool sign);
+    void extend(const score_t& target, int seed, double eps);
+    std::tuple<double, bool, double> getPvalue(const score_t& ES, double eps, bool sign);
 };
 
 } // namespace enrichit

@@ -1,15 +1,15 @@
-##' filter enriched result by gene set size or gene count
-##'
-##' 
-##' @title gsfilter
-##' @param x instance of enrichResult or compareClusterResult
-##' @param by one of 'GSSize' or 'Count'
-##' @param min minimal size
-##' @param max maximal size
-##' @importFrom methods is
-##' @return update object
-##' @export
-##' @author Guangchuang Yu
+#' filter enriched result by gene set size or gene count
+#'
+#' 
+#' @title gsfilter
+#' @param x instance of enrichResult or compareClusterResult
+#' @param by one of 'GSSize' or 'Count'
+#' @param min minimal size
+#' @param max maximal size
+#' @importFrom methods is
+#' @return update object
+#' @export
+#' @author Guangchuang Yu
 gsfilter <- function(x, by="GSSize", min=NA, max=NA) {
     by <- match.arg(by, c("GSSize", "Count"))
     if (is(x, "enrichResult")) {
