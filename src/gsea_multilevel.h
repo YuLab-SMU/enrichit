@@ -79,8 +79,8 @@ public:
     
     ~EsRuler();
     
-    void extend(const score_t& target, int seed, double eps);
-    std::tuple<double, bool, double> getPvalue(const score_t& ES, double eps, bool sign);
+    void extend(double ES_double, int seed, double eps);
+    std::tuple<double, bool, double> getPvalue(double ES_double, double eps, bool sign);
 };
 
 } // namespace enrichit

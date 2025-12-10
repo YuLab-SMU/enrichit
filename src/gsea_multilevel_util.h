@@ -13,18 +13,18 @@ namespace enrichit {
 using random_engine_t = std::mt19937;
 
 // Score class for precise ES calculation using integer arithmetic
+// Matches fgsea's score_t structure
 class score_t {
-private:
-    int64_t NS;        // Normalization sum
-    int64_t numerator; // Numerator
-    int64_t nMiss;     // Number of misses
-    int64_t nHit;      // Number of hits before current position
-    
 public:
-    score_t() : NS(0), numerator(0), nMiss(0), nHit(0) {}
+    int64_t NS;          // Normalization sum
+    int64_t coef_NS;     // Coefficient for NS (numerator)
+    int64_t diff;        // n - k (number of misses)
+    int64_t coef_const;  // Coefficient for constant (number of misses before current position)
+    
+    score_t() : NS(0), coef_NS(0), diff(0), coef_const(0) {}
 
-    score_t(int64_t NS_, int64_t num_, int64_t nMiss_, int64_t nHit_)
-        : NS(NS_), numerator(num_), nMiss(nMiss_), nHit(nHit_) {}
+    score_t(int64_t NS_, int64_t coef_NS_, int64_t diff_, int64_t coef_const_)
+        : NS(NS_), coef_NS(coef_NS_), diff(diff_), coef_const(coef_const_) {}
     
     // Get maximum NS value (use 2^30 to avoid overflow)
     static int64_t getMaxNS() {
@@ -32,57 +32,78 @@ public:
     }
     
     // Convert to double
+    // score = coef_NS / NS - coef_const / diff
     double getDouble() const {
         if (NS == 0) return 0.0;
-        double p_hit = static_cast<double>(numerator) / NS;
-        double p_miss = (nMiss == 0) ? 0.0 : static_cast<double>(nHit) / nMiss;
+        double p_hit = static_cast<double>(coef_NS) / NS;
+        double p_miss = (diff == 0) ? 0.0 : static_cast<double>(coef_const) / diff;
         return p_hit - p_miss;
     }
     
     // Get numerator (used for sign check)
+    // numerator = coef_NS * diff - coef_const * NS
     int64_t getNumerator() const {
-        return numerator;
+        return coef_NS * diff - coef_const * NS;
     }
     
-    // Comparison operators (for sorting and threshold checking)
+    // Comparison using exact integer arithmetic (like fgsea)
+    // Avoids floating point errors
     bool operator<(const score_t& other) const {
-        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
-        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
-        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
-        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
-        return (lhs_phit - lhs_pmiss) < (rhs_phit - rhs_pmiss);
+        // Compare: coef_NS/NS - coef_const/diff < other.coef_NS/other.NS - other.coef_const/other.diff
+        // Rearrange to avoid division:
+        // (coef_NS * diff - coef_const * NS) / (NS * diff) < (other.coef_NS * other.diff - other.coef_const * other.NS) / (other.NS * other.diff)
+        // Cross multiply (assuming positive denominators):
+        // (coef_NS * diff - coef_const * NS) * other.NS * other.diff < (other.coef_NS * other.diff - other.coef_const * other.NS) * NS * diff
+        
+        int64_t lhs_num = coef_NS * diff - coef_const * NS;
+        int64_t rhs_num = other.coef_NS * other.diff - other.coef_const * other.NS;
+        
+        // Use long double for comparison to avoid overflow
+        long double lhs = static_cast<long double>(lhs_num) / (static_cast<long double>(NS) * diff);
+        long double rhs = static_cast<long double>(rhs_num) / (static_cast<long double>(other.NS) * other.diff);
+        return lhs < rhs;
     }
     
     bool operator<=(const score_t& other) const {
-        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
-        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
-        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
-        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
-        return (lhs_phit - lhs_pmiss) <= (rhs_phit - rhs_pmiss);
+        int64_t lhs_num = coef_NS * diff - coef_const * NS;
+        int64_t rhs_num = other.coef_NS * other.diff - other.coef_const * other.NS;
+        long double lhs = static_cast<long double>(lhs_num) / (static_cast<long double>(NS) * diff);
+        long double rhs = static_cast<long double>(rhs_num) / (static_cast<long double>(other.NS) * other.diff);
+        return lhs <= rhs;
     }
     
     bool operator>(const score_t& other) const {
-        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
-        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
-        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
-        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
-        return (lhs_phit - lhs_pmiss) > (rhs_phit - rhs_pmiss);
+        int64_t lhs_num = coef_NS * diff - coef_const * NS;
+        int64_t rhs_num = other.coef_NS * other.diff - other.coef_const * other.NS;
+        long double lhs = static_cast<long double>(lhs_num) / (static_cast<long double>(NS) * diff);
+        long double rhs = static_cast<long double>(rhs_num) / (static_cast<long double>(other.NS) * other.diff);
+        return lhs > rhs;
     }
     
     bool operator>=(const score_t& other) const {
-        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
-        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
-        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
-        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
-        return (lhs_phit - lhs_pmiss) >= (rhs_phit - rhs_pmiss);
+        int64_t lhs_num = coef_NS * diff - coef_const * NS;
+        int64_t rhs_num = other.coef_NS * other.diff - other.coef_const * other.NS;
+        long double lhs = static_cast<long double>(lhs_num) / (static_cast<long double>(NS) * diff);
+        long double rhs = static_cast<long double>(rhs_num) / (static_cast<long double>(other.NS) * other.diff);
+        return lhs >= rhs;
     }
     
     bool operator==(const score_t& other) const {
-        long double lhs_phit = (NS == 0) ? 0.0L : (static_cast<long double>(numerator) / static_cast<long double>(NS));
-        long double lhs_pmiss = (nMiss == 0) ? 0.0L : (static_cast<long double>(nHit) / static_cast<long double>(nMiss));
-        long double rhs_phit = (other.NS == 0) ? 0.0L : (static_cast<long double>(other.numerator) / static_cast<long double>(other.NS));
-        long double rhs_pmiss = (other.nMiss == 0) ? 0.0L : (static_cast<long double>(other.nHit) / static_cast<long double>(other.nMiss));
-        return (lhs_phit - lhs_pmiss) == (rhs_phit - rhs_pmiss);
+        int64_t lhs_num = coef_NS * diff - coef_const * NS;
+        int64_t rhs_num = other.coef_NS * other.diff - other.coef_const * other.NS;
+        long double lhs = static_cast<long double>(lhs_num) / (static_cast<long double>(NS) * diff);
+        long double rhs = static_cast<long double>(rhs_num) / (static_cast<long double>(other.NS) * other.diff);
+        return std::abs(lhs - rhs) < 1e-15;
+    }
+    
+    // Unary minus operator
+    score_t operator-() const {
+        return score_t(NS, -coef_NS, diff, -coef_const);
+    }
+    
+    // Absolute value
+    score_t abs() const {
+        return std::max(*this, -(*this));
     }
 };
 

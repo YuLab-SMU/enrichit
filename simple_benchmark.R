@@ -1,10 +1,16 @@
 # Simplified benchmark to understand p-value differences
 library(fgsea)
-library(enrichit)
+library(DOSE)
+# library(enrichit)
+devtools::load_all(".")
 
 # Load the same data as in benchmark_vs_fgsea.R
 data(geneList, package = "DOSE")
 stats <- geneList
+cat("Stats summary:\n")
+print(summary(stats))
+print(head(stats))
+print(tail(stats))
 
 x <- DOSE:::get_dose_data("HDO")
 pathways <- split(x@gsid2gene$gene, x@gsid2gene$gsid)
@@ -33,14 +39,19 @@ enrichit_sub <- enrichit_res[match(common, enrichit_res$ID), ]
 pval_fgsea <- fgsea_sub$pval
 pval_enrichit <- enrichit_sub$pvalue
 
+es_fgsea <- fgsea_sub$ES
+es_enrichit <- enrichit_sub$enrichmentScore
+
 # Calculate statistics
 cor_pval <- cor(pval_fgsea, pval_enrichit, method = "spearman")
+cor_es <- cor(es_fgsea, es_enrichit, method = "pearson")
 mae <- mean(abs(pval_fgsea - pval_enrichit))
 rmse <- sqrt(mean((pval_fgsea - pval_enrichit)^2))
 mae_log <- mean(abs(log10(pval_fgsea + 1e-300) - log10(pval_enrichit + 1e-300)))
 
 cat("\n=== Results ===\n")
-cat("Correlation (Spearman):", round(cor_pval, 6), "\n")
+cat("Correlation (Spearman) P-values:", round(cor_pval, 6), "\n")
+cat("Correlation (Pearson) ES:", round(cor_es, 6), "\n")
 cat("MAE:", signif(mae, 6), "; RMSE:", signif(rmse, 6), "\n")
 cat("MAE on log10 scale:", round(mae_log, 6), "\n")
 
@@ -55,7 +66,9 @@ cat("fgsea gives smaller p-values for", fgsea_smaller, "out of", length(common),
 cat("Equal p-values for", equal, "pathways\n")
 
 # Look at largest differences
-df <- data.frame(ID = common, FGSEA = pval_fgsea, ENRICHIT = pval_enrichit,
+df <- data.frame(ID = common, 
+                 FGSEA_P = pval_fgsea, ENRICHIT_P = pval_enrichit,
+                 FGSEA_ES = es_fgsea, ENRICHIT_ES = es_enrichit,
                  ABS_DIFF = abs(pval_fgsea - pval_enrichit),
                  LOG10_DIFF = abs(log10(pval_fgsea + 1e-300) - log10(pval_enrichit + 1e-300)),
                  RATIO = pval_enrichit / pval_fgsea)
@@ -78,8 +91,8 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
   library(ggplot2)
 
   # Log-log plot
-  df$log10_fgsea <- log10(df$FGSEA + 1e-300)
-  df$log10_enrichit <- log10(df$ENRICHIT + 1e-300)
+  df$log10_fgsea <- log10(df$FGSEA_P + 1e-300)
+  df$log10_enrichit <- log10(df$ENRICHIT_P + 1e-300)
 
   p <- ggplot(df, aes(x = log10_fgsea, y = log10_enrichit)) +
     geom_point(alpha = 0.6) +

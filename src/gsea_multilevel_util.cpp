@@ -51,6 +51,7 @@ double getVarPerLevel(unsigned long k, unsigned long n) {
 }
 
 // Calculate ES for a sample
+// Matches fgsea's calcES implementation
 score_t calcES(const std::vector<int64_t>& ranks, const std::vector<int>& sample) {
     int n = static_cast<int>(ranks.size());
     int k = static_cast<int>(sample.size());
@@ -65,37 +66,34 @@ score_t calcES(const std::vector<int64_t>& ranks, const std::vector<int>& sample
     
     if (NS == 0) NS = 1; // Avoid division by zero
     
-    // Calculate running ES
-    int64_t numerator = 0;
-    int64_t max_numerator = 0;
-    int nHit_at_max = 0;
+    // score = coef_NS / NS - coef_const / (n - k)
+    // We track the maximum absolute value
     int nMiss = n - k;
+    score_t res(NS, 0, nMiss, 0);
+    score_t cur(NS, 0, nMiss, 0);
     
-    int sample_idx = 0;
-    int nHit = 0;
-    
-    for (int i = 0; i < n; ++i) {
-        if (sample_idx < k && i == sample[sample_idx]) {
-            // Hit
-            numerator += ranks[i];
-            sample_idx++;
-        } else {
-            // Miss
-            nHit++;
+    int last = -1;
+    for (int pos : sample) {
+        // Add misses before this hit
+        cur.coef_const += pos - last - 1;
+        // Check if this is a new maximum
+        if (res.abs() < cur.abs()) {
+            res = cur;
         }
-        
-        // Track maximum
-        if (std::abs(numerator - static_cast<int64_t>(nHit) * NS / (nMiss == 0 ? 1 : nMiss)) >
-            std::abs(max_numerator - static_cast<int64_t>(nHit_at_max) * NS / (nMiss == 0 ? 1 : nMiss))) {
-            max_numerator = numerator;
-            nHit_at_max = nHit;
+        // Add the hit
+        cur.coef_NS += ranks[pos];
+        // Check again after adding the hit
+        if (res.abs() < cur.abs()) {
+            res = cur;
         }
+        last = pos;
     }
     
-    return score_t(NS, max_numerator, nMiss, nHit_at_max);
+    return res;
 }
 
 // Calculate positive ES (absolute value)
+// Matches fgsea's calcPositiveES implementation
 score_t calcPositiveES(const std::vector<int64_t>& ranks, const std::vector<int>& sample) {
     int n = static_cast<int>(ranks.size());
     int k = static_cast<int>(sample.size());
@@ -110,52 +108,24 @@ score_t calcPositiveES(const std::vector<int64_t>& ranks, const std::vector<int>
     
     if (NS == 0) NS = 1;
     
-    int64_t numerator = 0;
-    int64_t max_numerator = 0;
-    int nHit_at_max = 0;
     int nMiss = n - k;
+    score_t res(NS, 0, nMiss, 0);
+    score_t cur(NS, 0, nMiss, 0);
     
-    int sample_idx = 0;
-    int nHit = 0;
-    
-    // Track maximum positive deviation (or 0 if all are negative)
-    // Like fgsea, we want to find the peak of the running sum.
-    // If the peak is negative, fgsea returns 0. We should do the same.
-    
-    // We compare (numerator/NS - nHit/nMiss)
-    // To avoid float, we compare (numerator * nMiss - nHit * NS)
-    
-    int64_t best_diff = -1; // Start below 0
-    bool found_positive = false;
-    
-    for (int i = 0; i < n; ++i) {
-        if (sample_idx < k && i == sample[sample_idx]) {
-            numerator += ranks[i];
-            sample_idx++;
-        } else {
-            nHit++;
+    int last = -1;
+    for (int pos : sample) {
+        // Add the hit first
+        cur.coef_NS += ranks[pos];
+        // Add misses after the hit
+        cur.coef_const += pos - last - 1;
+        // Track maximum (not absolute, just maximum)
+        if (res < cur) {
+            res = cur;
         }
-        
-        // Calculate diff for comparison
-        // We want to maximize this diff
-        int64_t current_diff = numerator * nMiss - nHit * NS;
-        
-        if (current_diff > best_diff) {
-            best_diff = current_diff;
-            max_numerator = numerator;
-            nHit_at_max = nHit;
-            
-            if (current_diff >= 0) found_positive = true;
-        }
+        last = pos;
     }
     
-    if (!found_positive) {
-        // If the best we found is negative, return 0 (start of curve)
-        // This matches fgsea behavior which clamps negative peaks to 0 for positive ES calculation
-        return score_t(NS, 0, nMiss, 0);
-    }
-    
-    return score_t(NS, max_numerator, nMiss, nHit_at_max);
+    return res;
 }
 
 // Generate random combination

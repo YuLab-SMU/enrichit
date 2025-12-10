@@ -90,15 +90,33 @@ gsea <- function(geneList, gene_sets,
     }
     
     # Rename columns to standard names
-    names(result)[names(result) == "GeneSet"] <- "ID"
-    names(result)[names(result) == "ES"] <- "enrichmentScore"
-    names(result)[names(result) == "PValue"] <- "pvalue"
-    names(result)[names(result) == "Size"] <- "setSize"
+    if (!"ID" %in% names(result) && "GeneSet" %in% names(result)) names(result)[names(result) == "GeneSet"] <- "ID"
+    if (!"enrichmentScore" %in% names(result) && "ES" %in% names(result)) names(result)[names(result) == "ES"] <- "enrichmentScore"
+    if (!"pvalue" %in% names(result) && "PValue" %in% names(result)) names(result)[names(result) == "PValue"] <- "pvalue"
+    if (!"setSize" %in% names(result) && "Size" %in% names(result)) names(result)[names(result) == "Size"] <- "setSize"
 
-    # Sort by absolute NES (descending)
+    # Add setSize if missing
+    if (!"setSize" %in% names(result)) {
+        # Calculate size based on gene_sets (filtered)
+        # Note: gene_sets order must match result ID order
+        # Assuming result ID matches gene_set_names order passed to C++
+        # If C++ preserves order (it does), we can map
+        set_sizes <- sapply(gene_sets, length)
+        result$setSize <- set_sizes[result$ID]
+    }
+
+    # Add NES if missing (placeholder)
+    if (!"NES" %in% names(result)) {
+        result$NES <- NA
+    }
+
+    # Sort by absolute NES (descending) or pvalue (ascending)
     if (nrow(result) > 0) {
-        result <- result[order(abs(result$NES), decreasing = TRUE), ]
-        rownames(result) <- NULL
+        if (!all(is.na(result$NES))) {
+            result <- result[order(abs(result$NES), decreasing = TRUE), ]
+        } else {
+             result <- result[order(result$pvalue, decreasing = FALSE), ]
+        }
     }
     
     return(result)
