@@ -24,12 +24,20 @@ cat("Running on", length(pathways_subset), "pathways\n")
 
 # Run fgsea
 cat("Running fgseaMultilevel...\n")
+start_time_fgsea <- Sys.time()
 fgsea_res <- fgseaMultilevel(pathways_subset, stats, minSize=15, maxSize=500, eps=1e-50, sampleSize=101)
+end_time_fgsea <- Sys.time()
+time_fgsea <- as.numeric(difftime(end_time_fgsea, start_time_fgsea, units = "secs"))
+cat("fgsea time:", round(time_fgsea, 4), "seconds\n")
 
 # Run enrichit
 cat("Running enrichit gsea (multilevel)...\n")
+start_time_enrichit <- Sys.time()
 enrichit_res <- gsea(stats, pathways_subset, method = "multilevel", minPerm = 101,
                      minGSSize=15, maxGSSize=500, pvalThreshold = 1.0, eps = 1e-50)
+end_time_enrichit <- Sys.time()
+time_enrichit <- as.numeric(difftime(end_time_enrichit, start_time_enrichit, units = "secs"))
+cat("enrichit time:", round(time_enrichit, 4), "seconds\n")
 
 # Match by pathway name
 common <- intersect(fgsea_res$pathway, enrichit_res$ID)
@@ -50,6 +58,10 @@ rmse <- sqrt(mean((pval_fgsea - pval_enrichit)^2))
 mae_log <- mean(abs(log10(pval_fgsea + 1e-300) - log10(pval_enrichit + 1e-300)))
 
 cat("\n=== Results ===\n")
+cat("Time comparison:\n")
+cat("  fgsea:   ", round(time_fgsea, 4), "s\n")
+cat("  enrichit:", round(time_enrichit, 4), "s\n")
+cat("  Ratio (enrichit/fgsea):", round(time_enrichit/time_fgsea, 2), "x\n")
 cat("Correlation (Spearman) P-values:", round(cor_pval, 6), "\n")
 cat("Correlation (Pearson) ES:", round(cor_es, 6), "\n")
 cat("MAE:", signif(mae, 6), "; RMSE:", signif(rmse, 6), "\n")
