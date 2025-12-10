@@ -4,6 +4,10 @@
 #'
 #' @inheritParams enrichit_params
 #' @param eps Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.
+#' @param sampleSize Sample size for multilevel methods (default: 101).
+#' @param seed Random seed for reproducibility (default: FALSE). If FALSE, a random seed is generated.
+#' @param nPermSimple Number of permutations for the simple method (default: 1000).
+#' @param scoreType Type of enrichment score calculation: "std", "pos", "neg" (default: "std").
 #'
 #' @return A data.frame with columns:
 #' - **ID**: Gene set name
@@ -46,6 +50,10 @@ gsea <- function(geneList, gene_sets,
                  maxPerm = 100000, 
                  pvalThreshold = 0.1, 
                  eps = 1e-10,
+                 sampleSize = 101,
+                 seed = FALSE,
+                 nPermSimple = 1000,
+                 scoreType = "std",
                  verbose = TRUE) {
     
     # Validate inputs
@@ -56,6 +64,7 @@ gsea <- function(geneList, gene_sets,
     gene_sets <- validate_gene_sets(gene_sets)
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
+    scoreType <- match.arg(scoreType, c("std", "pos", "neg"))
     
     # Ensure geneList is sorted
     if (is.unsorted(rev(geneList))) {
@@ -79,9 +88,13 @@ gsea <- function(geneList, gene_sets,
     
     # Call appropriate C++ function
     if (method == "multilevel") {
+        if (isFALSE(seed)) {
+            seed <- sample.int(1e9, 1)
+        }
         result <- gsea_multilevel_cpp(geneList = geneList, gene_sets = gene_sets, gene_set_names = gene_set_names,
                                  minPerm = minPerm, maxPerm = maxPerm, pvalThreshold = pvalThreshold,
-                                 exponent = exponent, method = method, eps = eps)
+                                 exponent = exponent, method = method, eps = eps, sampleSize = sampleSize, seed = seed,
+                                 nPermSimple = nPermSimple, scoreType = scoreType)
     } else if (adaptive) {
         result <- gsea_adaptive_cpp(geneList, gene_sets, gene_set_names, 
                                     minPerm, maxPerm, pvalThreshold, exponent, method)
@@ -128,6 +141,7 @@ gsea <- function(geneList, gene_sets,
 #'
 #' @title gsea_gson
 #' @inheritParams enrichit_params
+#' @param ... Additional parameters passed to gsea()
 #' @return gseaResult object
 #' @author Guangchuang Yu
 #' @export
@@ -144,7 +158,8 @@ gsea_gson <- function(geneList,
                  minPerm = 101,
                  maxPerm = 100000,
                  pvalThreshold = 0.1,
-                 verbose = TRUE) {
+                 verbose = TRUE,
+                 ...) {
 
     if (!inherits(gson, "GSON")) {
         stop("gson should be a GSON object")
@@ -175,7 +190,8 @@ gsea_gson <- function(geneList,
                      minPerm = minPerm,
                      maxPerm = maxPerm,
                      pvalThreshold = pvalThreshold,
-                     verbose = verbose)
+                     verbose = verbose,
+                     ...)
                      
     if (is.null(gsea_res) || nrow(gsea_res) == 0) {
         return(NULL)

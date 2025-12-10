@@ -18,7 +18,8 @@ gsea_gson(
   minPerm = 101,
   maxPerm = 1e+05,
   pvalThreshold = 0.1,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 )
 }
 \arguments{
@@ -49,6 +50,8 @@ gsea_gson(
 \item{pvalThreshold}{P-value threshold for early stopping.}
 
 \item{verbose}{Logical. Print progress messages.}
+
+\item{...}{Additional parameters passed to gsea()}
 }
 \value{
 gseaResult object

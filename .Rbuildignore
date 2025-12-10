@@ -3,3 +3,7 @@ Makefile
 
 benchmark_vs_fgsea.R
 ^CRAN-SUBMISSION$
+.claude/
+CLAUDE.md
+simple_benchmark.R
+.claude

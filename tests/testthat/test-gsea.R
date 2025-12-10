@@ -66,7 +66,7 @@ test_that("Adaptive GSEA works correctly", {
   gene_sets <- list(TopEnriched = gs_top, Random = gs_random)
   
   set.seed(42)
-  res_adaptive <- gsea(geneList = stats, gene_sets = gene_sets, adaptive = TRUE, 
+  res_adaptive <- gsea(geneList = stats, gene_sets = gene_sets, adaptive = TRUE, method = "sample",
                        minPerm = 100, maxPerm = 10000, pvalThreshold = 0.2)
   
   expect_true(is.data.frame(res_adaptive))
@@ -80,4 +80,46 @@ test_that("Adaptive GSEA works correctly", {
   expect_gte(top_nPerm, 100)
   # Random sets might stop early or not
   expect_gte(random_nPerm, 100)
+})
+
+test_that("Multilevel GSEA works correctly with new parameters", {
+  stats <- sort(rnorm(1000), decreasing = TRUE)
+  names(stats) <- paste0("Gene", 1:1000)
+  
+  # Top enriched
+  gs_top <- names(stats)[1:30]
+  # Bottom enriched
+  gs_bottom <- names(stats)[971:1000]
+  
+  gene_sets <- list(Top = gs_top, Bottom = gs_bottom)
+  
+  # Test scoreType = "pos"
+  set.seed(123)
+  res_pos <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "pos", nPermSimple = 1000)
+  
+  expect_true(is.data.frame(res_pos))
+  top_pos <- res_pos[res_pos$ID == "Top", ]
+  expect_lt(top_pos$pvalue, 0.05)
+  
+  # Test scoreType = "neg"
+  res_neg <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "neg", nPermSimple = 1000)
+  
+  expect_true(is.data.frame(res_neg))
+  bottom_neg <- res_neg[res_neg$ID == "Bottom", ]
+  expect_lt(bottom_neg$pvalue, 0.05)
+  
+  # Test scoreType = "std" (default)
+  res_std <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "std", nPermSimple = 1000)
+  
+  expect_true(is.data.frame(res_std))
+  expect_lt(res_std[res_std$ID == "Top", "pvalue"], 0.05)
+  expect_lt(res_std[res_std$ID == "Bottom", "pvalue"], 0.05)
+  
+  # Check if nPermSimple parameter is accepted and works (by checking it doesn't crash)
+  res_simple <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                     nPermSimple = 500)
+  expect_true(is.data.frame(res_simple))
 })

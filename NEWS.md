@@ -1,3 +1,8 @@
+# enrichit 0.0.8
+
++ fixed bugs of multilevel GSEA in p value calculation (2025-12-10, Wed)
+    - by learning the source code of 'fgsea'
+
 # enrichit 0.0.7
 
 + add `gseaScores` function (2025-12-07, Sun)

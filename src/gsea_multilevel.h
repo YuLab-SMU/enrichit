@@ -1,86 +1,81 @@
+/*
+ * This file is based on the fgsea package (https://github.com/ctlab/fgsea)
+ * Copyright (c) 2016-2024 Alexey Sergushichev
+ *
+ * It has been adapted for the enrichit package.
+ */
+
 #ifndef GSEA_MULTILEVEL_H
 #define GSEA_MULTILEVEL_H
 
-#include "gsea_multilevel_util.h"
 #include <vector>
+#include <random>
 #include <tuple>
 #include <functional>
+#include "esCalculation.h"
+#include "gsea_multilevel_util.h"
 
 namespace enrichit {
 
 class EsRuler {
 public:
+    using hash_t = uint32_t;
+    using gsea_t = std::pair<score_t, hash_t>;
+    
+    EsRuler(const std::vector<int64_t> &inpRanks,
+            unsigned int inpSampleSize,
+            unsigned int inpPathwaySize,
+            double inpMovesScale,
+            bool inpLog);
+    
+    ~EsRuler();
+
+    void extend(double ES_double, int seed, double eps);
+    std::tuple<double, bool, double> getPvalue(double ES_double, double eps, bool sign);
+
+private:
+    struct Level {
+        gsea_t bound;
+        std::vector<std::pair<gsea_t, int>> highScores;
+        std::vector<std::pair<gsea_t, int>> lowScores;
+    };
+    
     struct SampleChunks {
         std::vector<int64_t> chunkSum;
         std::vector<std::vector<int>> chunks;
-        
-        SampleChunks(int chunksNumber) 
-            : chunkSum(chunksNumber), chunks(chunksNumber) {}
-    };
-
-private:
-    using hash_t = uint64_t;
-    using gsea_t = std::pair<score_t, hash_t>;
-    
-    struct Level {
-        std::vector<std::pair<gsea_t, bool>> lowScores;   // < threshold
-        std::vector<std::pair<gsea_t, bool>> highScores;  // >= threshold
-        gsea_t bound;  // Threshold value
+        SampleChunks(int chunksNumber);
     };
     
     struct PerturbateResult {
         int moves;
         int iters;
     };
+
+    bool logStatus;
+    std::vector<int64_t> ranks;
+    std::vector<hash_t> geneHashes;
+    unsigned int sampleSize;
+    unsigned int pathwaySize;
+    double movesScale;
     
-    // Member variables
-    bool logStatus_;
-    const std::vector<int64_t>& ranks_;
-    std::vector<hash_t> geneHashes_;
-    unsigned int sampleSize_;
-    unsigned int pathwaySize_;
-    double movesScale_;
-    bool incorrectRuler;
+    std::vector<std::vector<int>> currentSamples;
+    std::vector<Level> levels;
     
-    std::vector<std::vector<int>> currentSamples_;
-    int oldSamplesStart;
-    std::vector<Level> levels_;
+    bool incorrectRuler = false;
     
-    std::vector<int> chunkLastElement;
+    // Perturbation helpers
     int chunksNumber;
+    std::vector<int> chunkLastElement;
+    int oldSamplesStart;
     
-    // Private methods
-    void initialiseSamples(std::mt19937& rng);
-    bool resampleGenesets(random_engine_t& rng);
-    
-    PerturbateResult perturbate(const std::vector<int64_t>& ranks, int k,
-                               SampleChunks& sampleChunks, gsea_t bound,
-                               random_engine_t& rng);
-    
-    PerturbateResult perturbate_iters(const std::vector<int64_t>& ranks, int k,
-                                     SampleChunks& sampleChunks, gsea_t bound,
-                                     std::mt19937& rng, int iters);
-    
-    PerturbateResult perturbate_until(const std::vector<int64_t>& ranks, int k,
-                                      SampleChunks& sampleChunks, gsea_t bound,
-                                      std::mt19937& rng,
-                                      std::function<bool(int, int)> const& f);
-    
-    int chunkLen(int ind);
+    bool resampleGenesets(random_engine_t &rng);
     hash_t calcHash(const std::vector<int>& curSample);
     
-public:
-    EsRuler(const std::vector<int64_t>& inpRanks,
-            unsigned int inpSampleSize,
-            unsigned int inpPathwaySize,
-            double inpMovesScale,
-            bool inpLog,
-            int seed = 12345);
+    PerturbateResult perturbate(const std::vector<int64_t> &ranks, int k, SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng);
+    PerturbateResult perturbate_iters(const std::vector<int64_t> &ranks, int k, SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng, int need_iters);
+    PerturbateResult perturbate_until(const std::vector<int64_t> &ranks, int k, SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng, std::function<bool(int, int)> const& f);
     
-    ~EsRuler();
-    
-    void extend(double ES_double, int seed, double eps);
-    std::tuple<double, bool, double> getPvalue(double ES_double, double eps, bool sign);
+    int chunkLen(int ind);
 };
 
 } // namespace enrichit

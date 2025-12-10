@@ -59,8 +59,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // gsea_multilevel_cpp
-Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int minPerm, int maxPerm, double pvalThreshold, double exponent, std::string method, double eps);
-RcppExport SEXP _enrichit_gsea_multilevel_cpp(SEXP geneListSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP minPermSEXP, SEXP maxPermSEXP, SEXP pvalThresholdSEXP, SEXP exponentSEXP, SEXP methodSEXP, SEXP epsSEXP) {
+Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int minPerm, int maxPerm, double pvalThreshold, double exponent, std::string method, double eps, int sampleSize, int seed, int nPermSimple, std::string scoreType);
+RcppExport SEXP _enrichit_gsea_multilevel_cpp(SEXP geneListSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP minPermSEXP, SEXP maxPermSEXP, SEXP pvalThresholdSEXP, SEXP exponentSEXP, SEXP methodSEXP, SEXP epsSEXP, SEXP sampleSizeSEXP, SEXP seedSEXP, SEXP nPermSimpleSEXP, SEXP scoreTypeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -73,7 +73,11 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type exponent(exponentSEXP);
     Rcpp::traits::input_parameter< std::string >::type method(methodSEXP);
     Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
-    rcpp_result_gen = Rcpp::wrap(gsea_multilevel_cpp(geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps));
+    Rcpp::traits::input_parameter< int >::type sampleSize(sampleSizeSEXP);
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    Rcpp::traits::input_parameter< int >::type nPermSimple(nPermSimpleSEXP);
+    Rcpp::traits::input_parameter< std::string >::type scoreType(scoreTypeSEXP);
+    rcpp_result_gen = Rcpp::wrap(gsea_multilevel_cpp(geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps, sampleSize, seed, nPermSimple, scoreType));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -95,7 +99,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_ora_cpp", (DL_FUNC) &_enrichit_ora_cpp, 4},
     {"_enrichit_gsea_cpp", (DL_FUNC) &_enrichit_gsea_cpp, 6},
     {"_enrichit_gsea_adaptive_cpp", (DL_FUNC) &_enrichit_gsea_adaptive_cpp, 8},
-    {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 9},
+    {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 13},
     {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
     {NULL, NULL, 0}
 };

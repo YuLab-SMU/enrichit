@@ -17,6 +17,10 @@ gsea(
   maxPerm = 1e+05,
   pvalThreshold = 0.1,
   eps = 1e-10,
+  sampleSize = 101,
+  seed = FALSE,
+  nPermSimple = 1000,
+  scoreType = "std",
   verbose = TRUE
 )
 }
@@ -44,6 +48,14 @@ gsea(
 \item{pvalThreshold}{P-value threshold for early stopping.}
 
 \item{eps}{Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.}
+
+\item{sampleSize}{Sample size for multilevel methods (default: 101).}
+
+\item{seed}{Random seed for reproducibility (default: FALSE). If FALSE, a random seed is generated.}
+
+\item{nPermSimple}{Number of permutations for the simple method (default: 1000).}
+
+\item{scoreType}{Type of enrichment score calculation: "std", "pos", "neg" (default: "std").}
 
 \item{verbose}{Logical. Print progress messages.}
 }

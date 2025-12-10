@@ -50,8 +50,27 @@ ora <- function(gene, gene_sets, universe) {
     # Call C++ function through Rcpp (using the Rcpp-generated ora_cpp function)
     result <- ora_cpp(gene, universe, gene_sets, gene_set_names)
     
+    # Rename columns to standard names
+    # C++ returns: GeneSet, SetSize, DEInSet, DESize, UniverseSize, PValue, geneID
+    names(result)[names(result) == "GeneSet"] <- "ID"
+    names(result)[names(result) == "PValue"] <- "pvalue"
+    names(result)[names(result) == "DEInSet"] <- "Count"
+    
+    # Calculate derived columns
+    # GeneRatio = Count / DESize
+    result$GeneRatio <- paste0(result$Count, "/", result$DESize)
+    
+    # BgRatio = SetSize / UniverseSize
+    result$BgRatio <- paste0(result$SetSize, "/", result$UniverseSize)
+    
+    # RichFactor = Count / SetSize
+    result$RichFactor <- result$Count / result$SetSize
+    
+    # FoldEnrichment = (Count/DESize) / (SetSize/UniverseSize)
+    result$FoldEnrichment <- (result$Count / result$DESize) / (result$SetSize / result$UniverseSize)
+    
     # Sort by p-value
-    result <- result[order(result$PValue), ]
+    result <- result[order(result$pvalue), ]
     rownames(result) <- NULL
     
     return(result)

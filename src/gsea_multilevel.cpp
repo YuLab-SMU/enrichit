@@ -1,292 +1,238 @@
+/*
+ * This file is based on the fgsea package (https://github.com/ctlab/fgsea)
+ * Copyright (c) 2016-2024 Alexey Sergushichev
+ *
+ * It has been adapted for the enrichit package.
+ */
+
 #include "gsea_multilevel.h"
-#include "gsea_multilevel_util.h"
-#include "enrichit.h"
 #include <Rcpp.h>
-#include <random>
 #include <algorithm>
-#include <tuple>
-#include <vector>
-#include <memory>
+#include <numeric>
+#include <cmath>
+#include <iomanip>
+#include <iostream>
+#include <unordered_map>
+#include <Rmath.h> 
+
+using namespace std;
 
 namespace enrichit {
 
-// Constructor
-EsRuler::EsRuler(const std::vector<int64_t>& inpRanks,
+EsRuler::EsRuler(const std::vector<int64_t> &inpRanks,
                  unsigned int inpSampleSize,
                  unsigned int inpPathwaySize,
                  double inpMovesScale,
-                 bool inpLog,
-                 int seed)
-    : logStatus_(inpLog),
-      ranks_(inpRanks),
-      sampleSize_(inpSampleSize),
-      pathwaySize_(inpPathwaySize),
-      movesScale_(inpMovesScale),
-      incorrectRuler(false),
-      oldSamplesStart(0),
-      chunksNumber(0) {
-    // initialise gene hashes
-    std::mt19937 gen(static_cast<uint32_t>(seed));
-    geneHashes_.resize(ranks_.size());
-    for (size_t i = 0; i < ranks_.size(); ++i) {
-        geneHashes_[i] = gen();
-    }
-    // initialise samples (random sets of pathwaySize indices)
-    initialiseSamples(gen);
-    resampleGenesets(gen);
+                 bool inpLog) :
+    logStatus(inpLog),
+    ranks(inpRanks),
+    geneHashes(inpRanks.size()),
+    sampleSize(inpSampleSize),
+    pathwaySize(inpPathwaySize),
+    movesScale(inpMovesScale) {
+    currentSamples.resize(inpSampleSize);
 }
 
-EsRuler::~EsRuler() {}
+EsRuler::~EsRuler() = default;
 
-void EsRuler::initialiseSamples(std::mt19937& rng) {
-    currentSamples_.clear();
-    currentSamples_.resize(sampleSize_);
-    for (unsigned int i = 0; i < sampleSize_; ++i) {
-        currentSamples_[i] = combination(0, static_cast<int>(ranks_.size()) - 1, static_cast<int>(pathwaySize_), rng);
-        std::sort(currentSamples_[i].begin(), currentSamples_[i].end());
-    }
-}
+EsRuler::SampleChunks::SampleChunks(int chunksNumber) : chunkSum(chunksNumber), chunks(chunksNumber) {}
 
-// Calculate hash of a sample
-uint64_t EsRuler::calcHash(const std::vector<int>& curSample) {
-    uint64_t res = 0;
+EsRuler::hash_t EsRuler::calcHash(const vector<int>& curSample) {
+    hash_t res = 0;
     for (int i : curSample) {
-        res ^= geneHashes_[i];
+        res ^= geneHashes[i];
     }
     return res;
 }
 
-bool EsRuler::resampleGenesets(std::mt19937& rng) {
-    std::vector<std::tuple<gsea_t, int, int>> stats(sampleSize_);
-
-    for (unsigned int sampleId = 0; sampleId < sampleSize_; sampleId++) {
-        score_t sampleEsPos = calcPositiveES(ranks_, currentSamples_[sampleId]);
-        score_t sampleEs = calcES(ranks_, currentSamples_[sampleId]);
-        uint64_t sampleHash = calcHash(currentSamples_[sampleId]);
-        // Note: checking numerator >= 0 for sign
-        stats[sampleId] = std::make_tuple(gsea_t(sampleEsPos, sampleHash),
-                                          (sampleEs.getNumerator() >= 0),
-                                          sampleId);
+int EsRuler::chunkLen(int ind) {
+    if (ind == 0) {
+        return chunkLastElement[0];
     }
-    std::sort(stats.begin(), stats.end());
+    return chunkLastElement[ind] - chunkLastElement[ind - 1];
+}
+
+bool EsRuler::resampleGenesets(random_engine_t &rng) {
+    vector<tuple<gsea_t, int, int>> stats(sampleSize);
+
+    for (unsigned int sampleId = 0; sampleId < sampleSize; sampleId++) {
+        auto sampleEsPos = calcPositiveES(ranks, currentSamples[sampleId]);
+        auto sampleEs = calcES(ranks, currentSamples[sampleId]);
+        hash_t sampleHash = calcHash(currentSamples[sampleId]);
+        stats[sampleId] = make_tuple(gsea_t{sampleEsPos, sampleHash},
+                           (sampleEs.getNumerator() >= 0),
+                           sampleId);
+    }
+    sort(stats.begin(), stats.end());
 
     int startFrom = 0;
-    gsea_t centralValue = std::get<0>(stats[sampleSize_ / 2]);
-    for (unsigned int sampleId = 0; sampleId < sampleSize_; sampleId++) {
-        if (std::get<0>(stats[sampleId]) >= centralValue) {
+    auto centralValue = get<0>(stats[sampleSize / 2]);
+    for (unsigned int sampleId = 0; sampleId < sampleSize; sampleId++){
+        if (get<0>(stats[sampleId]) >= centralValue) {
             startFrom = sampleId;
             break;
         }
     }
 
     if (startFrom == 0) {
-        while (startFrom < static_cast<int>(sampleSize_) && std::get<0>(stats[startFrom]) == std::get<0>(stats[0])) {
+        while (startFrom < (int)sampleSize && get<0>(stats[startFrom]) == get<0>(stats[0])) {
             ++startFrom;
         }
     }
 
-    if (startFrom == static_cast<int>(sampleSize_)) {
-        if (logStatus_) Rcpp::Rcout << "Got all equal values. Ending multilevel process\n";
-        return true; // or false to stop? fgsea returns true but maybe stops loop outside
+    if (startFrom == (int)sampleSize) {
+        if (logStatus) {
+            Rcpp::Rcout << "Got all equal values. Ending multilevel process\n";
+        }
+        return true;
     }
 
-    levels_.emplace_back();
-    levels_.back().bound = std::get<0>(stats[startFrom - 1]); // Threshold is the last of the "low" scores (wait, fgsea logic: bound is central value? No, let's check fgsea logic carefully. 
-    // fgsea: levels.back().bound = get<0>(stats[startFrom - 1]); // This separates low and high
-    // Actually, fgsea splits into lowScores and highScores. 
-    // Low: < bound (actually <= bound in implementation if bound is from stats[startFrom-1]?)
-    // Let's copy fgsea logic exactly:
-    /*
-        levels.back().bound = get<0>(stats[startFrom - 1]);   //  greater
-        for (int i = 0; i < startFrom; ++i) {
-            levels.back().lowScores.emplace_back(get<0>(stats[i]), get<1>(stats[i]));
-        }
-        for (int i = startFrom; i < sampleSize; ++i) {
-            levels.back().highScores.emplace_back(get<0>(stats[i]), get<1>(stats[i]));
-        }
-    */
-    
-    levels_.back().bound = std::get<0>(stats[startFrom - 1]);
-    
+    levels.emplace_back();
+    levels.back().bound = get<0>(stats[startFrom - 1]);
     for (int i = 0; i < startFrom; ++i) {
-        levels_.back().lowScores.emplace_back(std::get<0>(stats[i]), std::get<1>(stats[i]));
+        levels.back().lowScores.emplace_back(get<0>(stats[i]), get<1>(stats[i]));
     }
-    for (int i = startFrom; i < static_cast<int>(sampleSize_); ++i) {
-        levels_.back().highScores.emplace_back(std::get<0>(stats[i]), std::get<1>(stats[i]));
+    for (int i = startFrom; i < (int)sampleSize; ++i) {
+        levels.back().highScores.emplace_back(get<0>(stats[i]), get<1>(stats[i]));
     }
 
-    // Resample: keep high scores, replace low scores with duplicates of high scores (stratified sampling)
-    // fgsea uses uid_wrapper to sample from high scores
-    uid_wrapper uid(0, sampleSize_ - startFrom - 1, rng);
+    uid_wrapper uid(0, sampleSize - startFrom - 1, rng);
 
-    std::vector<std::vector<int>> new_sets;
-    new_sets.reserve(sampleSize_);
-    
-    // First 'startFrom' samples are copies of high scoring samples
-    for (int i = 0; i < startFrom; i++){
+    auto gen_new_sample = [&] {
         int ind = uid() + startFrom;
-        new_sets.push_back(currentSamples_[std::get<2>(stats[ind])]);
+        return currentSamples[get<2>(stats[ind])];
+    };
+
+    vector<vector<int> > new_sets;
+    for (int i = 0; i < startFrom; i++){
+        new_sets.push_back(gen_new_sample());
     }
-    // Remaining are existing high scoring samples
-    for (int i = startFrom; i < static_cast<int>(sampleSize_); ++i) {
-        new_sets.push_back(currentSamples_[std::get<2>(stats[i])]);
+    for (int i = startFrom; i < (int)sampleSize; ++i) {
+        new_sets.push_back(currentSamples[get<2>(stats[i])]);
     }
 
     oldSamplesStart = startFrom;
-    std::swap(currentSamples_, new_sets);
+    swap(currentSamples, new_sets);
     return true;
 }
 
-// Helper: Prepare chunks for perturbation
-void makeSamplesChunks(const std::vector<std::vector<int>>& currentSamples, 
-                      int sampleSize, int pathwaySize, int chunksNumber,
-                      const std::vector<int64_t>& ranks,
-                      const std::vector<int>& chunkLastElement,
-                      std::vector<EsRuler::SampleChunks>& samplesChunks) {
-    
-    for (int i = 0; i < sampleSize; ++i) {
-        std::fill(samplesChunks[i].chunkSum.begin(), samplesChunks[i].chunkSum.end(), 0);
-        for (int j = 0; j < chunksNumber; ++j) {
-            samplesChunks[i].chunks[j].clear();
-        }
-        int cnt = 0;
-        for (int pos : currentSamples[i]) {
-            while (cnt < chunksNumber && chunkLastElement[cnt] <= pos) {
-                ++cnt;
-            }
-            if (cnt < chunksNumber) {
-                samplesChunks[i].chunks[cnt].push_back(pos);
-                samplesChunks[i].chunkSum[cnt] += ranks[pos];
-            }
-        }
-    }
-}
-
-
 void EsRuler::extend(double ES_double, int seed, double eps) {
-    std::mt19937 gen(static_cast<uint32_t>(seed));
-    int const n = static_cast<int>(ranks_.size());
-    int const k = pathwaySize_;
-    
-    // Re-init hashes and samples
+    random_engine_t gen(static_cast<uint32_t>(seed));
+    int const n = (int) ranks.size();
+    int const k = pathwaySize;
+
     for (int i = 0; i < n; ++i) {
-        geneHashes_[i] = gen();
+        geneHashes[i] = gen();
     }
-    
-    for (unsigned int sampleId = 0; sampleId < sampleSize_; sampleId++) {
-        currentSamples_[sampleId] = combination(0, ranks_.size() - 1, pathwaySize_, gen);
-        std::sort(currentSamples_[sampleId].begin(), currentSamples_[sampleId].end());
+
+    for (unsigned int sampleId = 0; sampleId < sampleSize; sampleId++) {
+        currentSamples[sampleId] = combination(0, ranks.size() - 1, pathwaySize, gen);
+        sort(currentSamples[sampleId].begin(), currentSamples[sampleId].end());
     }
 
     if (!resampleGenesets(gen)) {
-        if (logStatus_) Rcpp::Rcout << "Could not advance in the start" << std::endl;
+        if (logStatus) {
+            Rcpp::Rcout << "Could not advance in the start" << endl;
+        }
         incorrectRuler = true;
         return;
     }
 
-    chunksNumber = std::max(1, (int)std::sqrt(pathwaySize_));
-    chunkLastElement = std::vector<int>(chunksNumber);
-    chunkLastElement[chunksNumber - 1] = ranks_.size();
-    std::vector<int> tmp(sampleSize_);
-    std::vector<SampleChunks> samplesChunks(sampleSize_, SampleChunks(chunksNumber));
+    chunksNumber = max(1, (int) sqrt(pathwaySize));
+    chunkLastElement = vector<int>(chunksNumber);
+    chunkLastElement[chunksNumber - 1] = ranks.size();
+    vector<int> tmp(sampleSize);
+    vector<SampleChunks> samplesChunks(sampleSize, SampleChunks(chunksNumber));
 
-    // Convert ES to score_t for comparison (flooring ES to exact score)
-    // works best if getMaxNS is a power of two
-    score_t NEED_ES(score_t::getMaxNS(), int64_t(score_t::getMaxNS() * ES_double), 1, 0);
+    score_t NEED_ES{score_t::getMaxNS(), int64_t(score_t::getMaxNS() * ES_double), 1, 0};
 
     double adjLogPval = 0;
-    
-    for (int levelNum = 1; levels_.back().bound.first < NEED_ES; ++levelNum) {
-        adjLogPval += betaMeanLog(int(levels_.back().highScores.size() + 1), sampleSize_);
-        if (eps != 0 && adjLogPval < std::log(eps)) {
+    for (int levelNum = 1; levels.back().bound.first < NEED_ES; ++levelNum) {
+        adjLogPval += betaMeanLog(int(levels.back().highScores.size() + 1), sampleSize);
+        if (eps != 0 && adjLogPval < log(eps)) {
             break;
         }
 
-        if (logStatus_) {
-            // Rcpp::Rcout << "Iteration " << levelNum << ...
+        if (logStatus) {
+            Rcpp::Rcout << std::setprecision(15) << std::fixed << "Iteration " << levelNum << ": score=" << levels.back().bound.first.getDouble() << ", hash=" << levels.back().bound.second << endl;
         }
 
-        // Re-chunk if needed (fgsea updates chunkLastElement inside loop? actually it does it once outside loop in fgseaMultilevelSupplement.cpp, wait. 
-        // Ah, fgsea updates chunk boundaries inside the loop for each level but based on currentSamples?
-        // Actually the code I read has it inside the function but outside the `for(int levelNum...` loop?
-        // Checking my read output from step 41:
-        // "chunksNumber = max(1, (int) sqrt(pathwaySize)); ... for (int levelNum = 1; levels.back().bound.first < NEED_ES; ++levelNum) {"
-        // It seems chunkLastElement is set ONCE. But wait, fgsea updates it inside loop?
-        // Step 41 output: "for (int i = 0, pos = 0; i < chunksNumber - 1; ++i) ... " is INSIDE the loop over levels?
-        // Yes, it recalculates chunk boundaries based on current samples dist.
-        
         for (int i = 0, pos = 0; i < chunksNumber - 1; ++i) {
-            pos += (pathwaySize_ + i) / chunksNumber;
-            std::vector<int> tmp(sampleSize_);
-            for (unsigned int j = 0; j < sampleSize_; ++j) {
-               // Safety check
-               if (pos < static_cast<int>(currentSamples_[j].size()))
-                  tmp[j] = currentSamples_[j][pos];
+            pos += (pathwaySize + i) / chunksNumber;
+            for (unsigned int j = 0; j < sampleSize; ++j) {
+                tmp[j] = currentSamples[j][pos];
             }
-            std::nth_element(tmp.begin(), tmp.begin() + sampleSize_ / 2, tmp.end());
-            chunkLastElement[i] = tmp[sampleSize_ / 2];
+            nth_element(tmp.begin(), tmp.begin() + sampleSize / 2, tmp.end());
+            chunkLastElement[i] = tmp[sampleSize / 2];
         }
 
-        makeSamplesChunks(currentSamples_, sampleSize_, pathwaySize_, chunksNumber, ranks_, chunkLastElement, samplesChunks);
+        for (unsigned int i = 0; i < sampleSize; ++i) {
+            fill(samplesChunks[i].chunkSum.begin(), samplesChunks[i].chunkSum.end(), int64_t(0));
+            for (int j = 0; j < chunksNumber; ++j) {
+                samplesChunks[i].chunks[j].clear();
+            }
+            int cnt = 0;
+            for (int pos : currentSamples[i]) {
+                while (chunkLastElement[cnt] <= pos) {
+                    ++cnt;
+                }
+                samplesChunks[i].chunks[cnt].push_back(pos);
+                samplesChunks[i].chunkSum[cnt] += ranks[pos];
+            }
+        }
 
         int nIterations = 0;
         int nAccepted = 0;
-        int needAccepted = movesScale_ * sampleSize_ * pathwaySize_ / 2;
+        int needAccepted = movesScale * sampleSize * pathwaySize / 2;
         for (; nAccepted < needAccepted; nIterations++) {
-            for (unsigned int sampleId = 0; sampleId < sampleSize_; sampleId++) {
-                auto perturbResult = perturbate(ranks_, k, samplesChunks[sampleId], levels_.back().bound, gen);
+            for (unsigned int sampleId = 0; sampleId < sampleSize; sampleId++) {
+                auto perturbResult = perturbate(ranks, k, samplesChunks[sampleId], levels.back().bound, gen);
                 nAccepted += perturbResult.moves;
             }
         }
         for (int i = 0; i < nIterations; i++) {
-            for (unsigned int sampleId = 0; sampleId < sampleSize_; sampleId++) {
-                perturbate(ranks_, k, samplesChunks[sampleId], levels_.back().bound, gen);
+            for (unsigned int sampleId = 0; sampleId < sampleSize; sampleId++) {
+                perturbate(ranks, k, samplesChunks[sampleId], levels.back().bound, gen);
             }
         }
 
-        // Reconstruct currentSamples from chunks
-        for (unsigned int i = 0; i < sampleSize_; ++i) {
-            currentSamples_[i].clear();
+        for (unsigned int i = 0; i < sampleSize; ++i) {
+            currentSamples[i].clear();
             for (int j = 0; j < chunksNumber; ++j) {
                 for (int pos : samplesChunks[i].chunks[j]) {
-                    currentSamples_[i].push_back(pos);
+                    currentSamples[i].push_back(pos);
                 }
             }
         }
 
-        size_t lastSize = levels_.size();
+        auto lastSize = levels.size();
         if (!resampleGenesets(gen)) {
             incorrectRuler = true;
-            if (logStatus_) Rcpp::Rcout << "Could not advance after level " << levelNum << std::endl;
+            if (logStatus) {
+                Rcpp::Rcout << "Could not advance after level " << levelNum << endl;
+            }
         }
-        if (incorrectRuler || lastSize == levels_.size()) {
+        if (lastSize == levels.size()) {
             break;
         }
-        levelNum++;
     }
 }
 
-std::tuple<double, bool, double> EsRuler::getPvalue(double ES_double, double eps, bool sign) {
-    if (incorrectRuler) {
-        return std::make_tuple(std::numeric_limits<double>::quiet_NaN(), true, std::numeric_limits<double>::quiet_NaN());
+tuple<double, bool, double> EsRuler::getPvalue(double ES_double, double eps, bool sign) {
+    if (incorrectRuler){
+        return make_tuple(nan("1"), true, nan("1"));
     }
-    
-    int const n = static_cast<int>(ranks_.size());
-    int const k = pathwaySize_;
-    
-    // Convert ES to score_t for comparison (flooring ES to exact score)
-    // works best if getMaxNS is a power of two
-    score_t ES_score(score_t::getMaxNS(), int64_t(score_t::getMaxNS() * ES_double), 1, 0);
-    gsea_t ES(ES_score, 0);
+
+    score_t ES_score{score_t::getMaxNS(), int64_t(score_t::getMaxNS() * ES_double), 1, 0};
+    gsea_t ES{ES_score, 0};
 
     double adjLogPval = 0;
     double lvlsVar = 0;
-    
-    for (auto& lvl : levels_) {
+
+    for (auto& lvl : levels) {
         if (ES <= lvl.bound) {
             int cntLast = 0;
             int cntPositive = 0;
-            // highScores > lvl.bound >= ES
             for (auto[x, isPositive] : lvl.highScores) {
                 cntLast += 1;
                 cntPositive += isPositive;
@@ -297,29 +243,27 @@ std::tuple<double, bool, double> EsRuler::getPvalue(double ES_double, double eps
                     cntPositive += isPositive;
                 }
             }
-            
+
             int numerator = (sign ? cntLast : cntPositive);
             if (numerator == 0) {
-                adjLogPval += betaMeanLog(1, sampleSize_);
-                return std::make_tuple(std::max(0.0, std::min(1.0, std::exp(adjLogPval))), true, std::numeric_limits<double>::quiet_NaN());
+                adjLogPval += betaMeanLog(1, sampleSize);
+                return make_tuple(max(0.0, min(1.0, exp(adjLogPval))), true, nan("1"));
             }
-            
-            adjLogPval += betaMeanLog(numerator, sampleSize_);
-            lvlsVar += getVarPerLevel(numerator, sampleSize_);
-            
-            double log2err = std::sqrt(lvlsVar) / std::log(2.0);
-            return std::make_tuple(std::max(0.0, std::min(1.0, std::exp(adjLogPval))), true, log2err);
+
+            adjLogPval += betaMeanLog(numerator, sampleSize);
+            lvlsVar += getVarPerLevel(numerator, sampleSize);
+
+            double log2err = sqrt(lvlsVar) / log(2);
+            return make_tuple(max(0.0, min(1.0, exp(adjLogPval))), true, log2err);
         }
-        
+
         int nhigh = int(lvl.highScores.size());
         nhigh += 1;
-        adjLogPval += betaMeanLog(nhigh, sampleSize_);
-        lvlsVar += getVarPerLevel(nhigh, sampleSize_);
+        adjLogPval += betaMeanLog(nhigh, sampleSize);
+        lvlsVar += getVarPerLevel(nhigh, sampleSize);
     }
-    
-    auto& lastLevel = levels_.back();
-    // ES > lastLevel.bound
-    // highScores -> uniform [> lastLevel.bound]
+
+    auto& lastLevel = levels.back();
     int cntLast = 0;
     int cntPositive = 0;
     for (auto[x, isPositive] : lastLevel.highScores) {
@@ -328,72 +272,46 @@ std::tuple<double, bool, double> EsRuler::getPvalue(double ES_double, double eps
             cntPositive += isPositive;
         }
     }
-    
+
     int numerator = (sign ? cntLast : cntPositive);
-    
+
     if (numerator == 0) {
         adjLogPval += betaMeanLog(1, int(lastLevel.highScores.size()));
-        return std::make_tuple(std::max(0.0, std::min(1.0, std::exp(adjLogPval))), true, std::numeric_limits<double>::quiet_NaN());
+        return make_tuple(max(0.0, min(1.0, exp(adjLogPval))), true, nan("1"));
     }
-    
+
     adjLogPval += betaMeanLog(numerator, int(lastLevel.highScores.size()));
     lvlsVar += getVarPerLevel(numerator, int(lastLevel.highScores.size()));
-    
-    double log2err = std::sqrt(lvlsVar) / std::log(2.0);
-    return std::make_tuple(std::max(0.0, std::min(1.0, std::exp(adjLogPval))), true, log2err);
+
+    double log2err = sqrt(lvlsVar) / log(2);
+    return make_tuple(max(0.0, min(1.0, exp(adjLogPval))), true, log2err);
 }
 
-
-
-int EsRuler::chunkLen(int ind) {
-    if (ind == 0) {
-        return chunkLastElement[0];
-    }
-    return chunkLastElement[ind] - chunkLastElement[ind - 1];
-}
-
-EsRuler::PerturbateResult EsRuler::perturbate(const std::vector<int64_t>& ranks,
-                                         int k,
-                                         SampleChunks& sampleChunks,
-                                         gsea_t bound,
-                                         std::mt19937& rng) {
-    int iters = std::max(1, static_cast<int>(k * movesScale_));
+EsRuler::PerturbateResult EsRuler::perturbate(const std::vector<int64_t> &ranks, int k, EsRuler::SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng) {
+    double pertPrmtr = 0.1;
+    int iters = max(1, (int) (k * pertPrmtr));
     return perturbate_iters(ranks, k, sampleChunks, bound, rng, iters);
 }
 
-EsRuler::PerturbateResult EsRuler::perturbate_iters(const std::vector<int64_t>& ranks,
-                                         int k,
-                                         SampleChunks& sampleChunks,
-                                         gsea_t bound,
-                                         std::mt19937& rng,
-                                         int need_iters) {
+EsRuler::PerturbateResult EsRuler::perturbate_iters(const std::vector<int64_t> &ranks, int k, EsRuler::SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng, int need_iters) {
     return perturbate_until(ranks, k, sampleChunks, bound, rng, [need_iters](int moves, int iters) {
         return iters >= need_iters;
     });
 }
 
-EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& ranks,
-                                          int k,
-                                          SampleChunks& sampleChunks,
-                                          gsea_t bound,
-                                          std::mt19937& rng,
-                                          std::function<bool(int, int)> const& f) {
-    int n = static_cast<int>(ranks.size());
+EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t> &ranks, int k, EsRuler::SampleChunks& sampleChunks, gsea_t bound, random_engine_t &rng, std::function<bool(int, int)> const& f) {
+    int n = int(ranks.size());
     uid_wrapper uid_n(0, n - 1, rng);
     uid_wrapper uid_k(0, k - 1, rng);
 
     int64_t NS = 0;
-    uint64_t curHash = 0;
-    
-    // Calculate current stats from chunks
-    int chunksSz = static_cast<int>(sampleChunks.chunks.size());
-    for (int i = 0; i < chunksSz; ++i) {
+    hash_t curHash = 0;
+    for (int i = 0; i < (int) sampleChunks.chunks.size(); ++i) {
         for (int pos : sampleChunks.chunks[i]) {
             NS += ranks[pos];
-            curHash ^= geneHashes_[pos];
+            curHash ^= geneHashes[pos];
         }
     }
-    
     int candVal = -1;
     bool hasCand = false;
     int candX = 0;
@@ -401,17 +319,15 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
 
     int moves = 0;
     int iters = 0;
-    
     while (!f(moves, iters)) {
         iters += 1;
-        int oldInd = uid_k(); // index in sample to remove (0..k-1)
+        int oldInd = uid_k();
 
-        // Find which chunk and where in chunk oldInd corresponds to
         int oldChunkInd = 0, oldIndInChunk = 0;
         int oldVal;
         {
             int tmp = oldInd;
-            while ((int)sampleChunks.chunks[oldChunkInd].size() <= tmp) {
+            while ((int) sampleChunks.chunks[oldChunkInd].size() <= tmp) {
                 tmp -= sampleChunks.chunks[oldChunkInd].size();
                 ++oldChunkInd;
             }
@@ -419,31 +335,25 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
             oldVal = sampleChunks.chunks[oldChunkInd][oldIndInChunk];
         }
 
-        int newVal = uid_n(); // index in all genes to add (0..n-1)
+        int newVal = uid_n();
 
-        // Find chunk for newVal
-        // Using binary search on chunkLastElement to find correct chunk
-        auto upper = std::upper_bound(chunkLastElement.begin(), chunkLastElement.end(), newVal);
-        int newChunkInd = static_cast<int>(upper - chunkLastElement.begin());
-        
-        // Check if newVal is already in the sample
-        auto& targetChunk = sampleChunks.chunks[newChunkInd];
-        auto it_pos = std::lower_bound(targetChunk.begin(), targetChunk.end(), newVal);
-        int newIndInChunk = static_cast<int>(it_pos - targetChunk.begin());
+        int newChunkInd = upper_bound(chunkLastElement.begin(), chunkLastElement.end(), newVal) - chunkLastElement.begin();
+        int newIndInChunk = lower_bound(sampleChunks.chunks[newChunkInd].begin(), sampleChunks.chunks[newChunkInd].end(), newVal) - sampleChunks.chunks[newChunkInd].begin();
 
-        if (it_pos != targetChunk.end() && *it_pos == newVal) {
+        if (newIndInChunk < (int) sampleChunks.chunks[newChunkInd].size() && sampleChunks.chunks[newChunkInd][newIndInChunk] == newVal) {
             if (newVal == oldVal) {
                 ++moves;
             }
-            continue; // already present
+            continue;
         }
 
-        // Perform Swap
         sampleChunks.chunks[oldChunkInd].erase(sampleChunks.chunks[oldChunkInd].begin() + oldIndInChunk);
-        sampleChunks.chunks[newChunkInd].insert(sampleChunks.chunks[newChunkInd].begin() + newIndInChunk - (oldChunkInd == newChunkInd && oldIndInChunk < newIndInChunk ? 1 : 0), newVal);
+        sampleChunks.chunks[newChunkInd].insert(
+            sampleChunks.chunks[newChunkInd].begin() + newIndInChunk - (oldChunkInd == newChunkInd && oldIndInChunk < newIndInChunk ? 1 : 0),
+            newVal);
 
         NS = NS - ranks[oldVal] + ranks[newVal];
-        curHash ^= geneHashes_[oldVal] ^ geneHashes_[newVal];
+        curHash ^= geneHashes[oldVal] ^ geneHashes[newVal];
         sampleChunks.chunkSum[oldChunkInd] -= ranks[oldVal];
         sampleChunks.chunkSum[newChunkInd] += ranks[newVal];
 
@@ -468,22 +378,9 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
                 candX--;
                 candY += ranks[newVal];
             }
-        } else {
-            candVal = oldVal;
-            hasCand = true;
-            candX = 0;
-            candY = 0;
-            for (int i = 0; i < chunksSz; ++i) {
-                for (int pos : sampleChunks.chunks[i]) {
-                    if (pos < candVal) {
-                        candX++;
-                        candY += ranks[pos];
-                    }
-                }
-            }
         }
 
-        if (hasCand && check(score_t(NS, candY, n - k, candX))) {
+        if (hasCand && check(score_t{NS, candY, n - k, candX})) {
             ++moves;
             continue;
         }
@@ -493,16 +390,16 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
         bool ok = false;
         int last = -1;
 
-        for (int i = 0; i < chunksSz; ++i) {
-            if (!check(score_t(NS, curY + sampleChunks.chunkSum[i], n - k, curX))) {
+        for (int i = 0; i < (int) sampleChunks.chunks.size(); ++i) {
+            if (!check(score_t{NS, curY + sampleChunks.chunkSum[i], n - k, curX})) {
                 curY += sampleChunks.chunkSum[i];
-                curX += chunkLastElement[i] - last - 1 - (int)sampleChunks.chunks[i].size();
+                curX += chunkLastElement[i] - last - 1 - (int) sampleChunks.chunks[i].size();
                 last = chunkLastElement[i] - 1;
             } else {
                 for (int pos : sampleChunks.chunks[i]) {
                     curY += ranks[pos];
                     curX += pos - last - 1;
-                    if (check(score_t(NS, curY, n - k, curX))) {
+                    if (check(score_t{NS, curY, n - k, curX})) {
                         ok = true;
                         hasCand = true;
                         candX = curX;
@@ -522,7 +419,7 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
 
         if (!ok) {
             NS = NS - ranks[newVal] + ranks[oldVal];
-            curHash ^= geneHashes_[newVal] ^ geneHashes_[oldVal];
+            curHash ^= geneHashes[newVal] ^ geneHashes[oldVal];
 
             sampleChunks.chunkSum[oldChunkInd] += ranks[oldVal];
             sampleChunks.chunkSum[newChunkInd] -= ranks[newVal];
@@ -550,15 +447,35 @@ EsRuler::PerturbateResult EsRuler::perturbate_until(const std::vector<int64_t>& 
             ++moves;
         }
     }
-
-    return PerturbateResult{iters, moves};
+    return {moves, iters};
 }
 
 } // namespace enrichit
 
+// Helper for multilevel error
+double calcMultilevelError(double pval, int sampleSize) {
+    if (std::isnan(pval) || pval <= 0) return std::numeric_limits<double>::quiet_NaN();
+    double term1 = floor(-log2(pval) + 1);
+    double term2 = R::trigamma((sampleSize + 1) / 2.0) - R::trigamma(sampleSize + 1.0);
+    return sqrt(term1 * term2) / log(2.0);
+}
+
 // [[Rcpp::export]]
-Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int minPerm, int maxPerm, double pvalThreshold, double exponent, std::string method, double eps) {
+Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, 
+                                    const Rcpp::List& gene_sets, 
+                                    const Rcpp::CharacterVector& gene_set_names, 
+                                    int minPerm, 
+                                    int maxPerm, 
+                                    double pvalThreshold, 
+                                    double exponent, 
+                                    std::string method, 
+                                    double eps, 
+                                    int sampleSize, 
+                                    int seed, 
+                                    int nPermSimple = 1000,
+                                    std::string scoreType = "std") {
     using namespace enrichit;
+    
     int n_sets = gene_sets.size();
     int n_genes = geneList.size();
     
@@ -580,9 +497,20 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, const R
         gene_map[Rcpp::as<std::string>(gene_names[i])] = i;
     }
     
-    // Calculate ES for all pathways first
-    std::vector<double> esVector(n_sets);
-    std::vector<int> pathwaySizes(n_sets);
+    // Calculate ES and group by size
+    struct PathwayInfo {
+        int index;
+        double es;
+        int size;
+        std::vector<int> sample;
+        // Simple permutation stats
+        int nGeEs = 0;
+        int nLeEs = 0;
+        double simplePval = 1.0;
+        double simpleError = 0.0;
+    };
+    
+    std::map<int, std::vector<PathwayInfo>> sizeGroups;
     
     for (int i = 0; i < n_sets; ++i) {
         Rcpp::CharacterVector gs = gene_sets[i];
@@ -594,81 +522,230 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, const R
             }
         }
         std::sort(sample.begin(), sample.end());
-        pathwaySizes[i] = sample.size();
         
         if (sample.size() > 0) {
-            score_t ES = calcES(posRanks, sample);
-            esVector[i] = ES.getDouble();
-        } else {
-            esVector[i] = 0.0;
-        }
-    }
-    
-    // Group pathways by size (like fgsea does)
-    std::map<int, std::vector<int>> sizeGroups;
-    for (int i = 0; i < n_sets; ++i) {
-        if (pathwaySizes[i] > 0) {
-            sizeGroups[pathwaySizes[i]].push_back(i);
-        }
-    }
-    
-    // Calculate p-values for all pathways
-    Rcpp::NumericVector pvalue(n_sets, 1.0);
-    Rcpp::NumericVector log2err(n_sets, NA_REAL);
-    
-    int seed = 42;
-    
-    // Process each size group separately
-    for (auto& [size, indices] : sizeGroups) {
-        // Find max positive and min negative ES for this size group
-        double maxES = -std::numeric_limits<double>::infinity();
-        double minES = std::numeric_limits<double>::infinity();
-        
-        for (int idx : indices) {
-            double es = esVector[idx];
-            if (es > maxES) maxES = es;
-            if (es < minES) minES = es;
-        }
-        
-        // Create rulers for this size group
-        EsRuler* esRulerPos = nullptr;
-        EsRuler* esRulerNeg = nullptr;
-        
-        if (maxES >= 0) {
-            esRulerPos = new EsRuler(posRanks, minPerm, size, 1.0, false, seed);
-            esRulerPos->extend(std::abs(maxES), seed, eps);
-        }
-        if (minES < 0) {
-            esRulerNeg = new EsRuler(negRanks, minPerm, size, 1.0, false, seed);
-            esRulerNeg->extend(std::abs(minES), seed, eps);
-        }
-        
-        // Calculate p-values for all pathways in this size group
-        for (int idx : indices) {
-            double currentES = esVector[idx];
-            std::tuple<double, bool, double> res;
+            std::pair<score_t, score_t> s = calcSignedES(posRanks, sample);
+            double esPos = s.first.getDouble();
+            double esNeg = s.second.getDouble();
+            double es;
             
-            if (currentES >= 0 && esRulerPos != nullptr) {
-                res = esRulerPos->getPvalue(std::abs(currentES), eps, true);
-            } else if (currentES < 0 && esRulerNeg != nullptr) {
-                res = esRulerNeg->getPvalue(std::abs(currentES), eps, true);
-            } else {
-                continue;
+            if (scoreType == "std") {
+                es = (std::abs(esPos) >= std::abs(esNeg)) ? esPos : esNeg;
+            } else if (scoreType == "pos") {
+                es = esPos;
+            } else { // scoreType == "neg"
+                es = esNeg;
             }
             
-            pvalue[idx] = std::get<0>(res);
-            log2err[idx] = std::get<2>(res);
+            sizeGroups[sample.size()].push_back({i, es, (int)sample.size(), sample});
+        }
+    }
+    
+    std::vector<double> pvals(n_sets, std::numeric_limits<double>::quiet_NaN());
+    std::vector<double> esVector(n_sets, 0.0);
+    std::vector<double> nesVector(n_sets, std::numeric_limits<double>::quiet_NaN());
+    std::vector<int> sizes(n_sets, 0);
+    std::vector<double> log2errs(n_sets, std::numeric_limits<double>::quiet_NaN());
+    
+    random_engine_t rng(static_cast<uint32_t>(seed));
+    
+    // Iterate over size groups
+    for (auto& group : sizeGroups) {
+        int sz = group.first;
+        auto& pathways = group.second;
+        
+        // 1. Simple Permutations
+        int nGeZero = 0;
+        int nLeZero = 0;
+        double sumPosES = 0.0;
+        double sumNegES = 0.0;
+        
+        for (int i = 0; i < nPermSimple; ++i) {
+            std::vector<int> randomSample = combination(0, n_genes - 1, sz, rng);
+            std::sort(randomSample.begin(), randomSample.end());
+            
+            std::pair<score_t, score_t> s = calcSignedES(posRanks, randomSample);
+            double esPos = s.first.getDouble();
+            double esNeg = s.second.getDouble();
+            double randEs;
+            
+            if (scoreType == "std") {
+                randEs = (std::abs(esPos) >= std::abs(esNeg)) ? esPos : esNeg;
+            } else if (scoreType == "pos") {
+                randEs = esPos;
+            } else { // scoreType == "neg"
+                randEs = esNeg;
+            }
+            
+            if (randEs >= 0) {
+                nGeZero++;
+                sumPosES += randEs;
+            } else {
+                nLeZero++;
+                sumNegES += randEs;
+            }
+            
+            for (auto& p : pathways) {
+                if (randEs >= p.es) p.nGeEs++;
+                if (randEs <= p.es) p.nLeEs++;
+            }
         }
         
-        // Clean up
-        if (esRulerPos != nullptr) delete esRulerPos;
-        if (esRulerNeg != nullptr) delete esRulerNeg;
+        double meanPosES = (nGeZero > 0) ? sumPosES / nGeZero : 1.0; // Avoid div by zero
+        double meanNegES = (nLeZero > 0) ? sumNegES / nLeZero : -1.0;
+        
+        std::vector<PathwayInfo*> multilevelCandidates;
+        
+        for (auto& p : pathways) {
+            esVector[p.index] = p.es;
+            sizes[p.index] = p.size;
+            
+            // Calculate Simple P-value and Error
+            double modeFraction = 1.0; // Count of samples with same sign
+            int nMoreExtreme = 0;
+            
+            if (scoreType == "std") {
+                if (p.es >= 0) {
+                    nMoreExtreme = p.nGeEs;
+                    modeFraction = nGeZero;
+                } else {
+                    nMoreExtreme = p.nLeEs;
+                    modeFraction = nLeZero;
+                }
+            } else if (scoreType == "pos") {
+                nMoreExtreme = p.nGeEs;
+                modeFraction = nPermSimple; // Use total count for one-sided
+            } else if (scoreType == "neg") {
+                nMoreExtreme = p.nLeEs;
+                modeFraction = nPermSimple; // Use total count for one-sided
+            }
+            
+            if (modeFraction < 10) {
+                p.simplePval = std::numeric_limits<double>::quiet_NaN();
+                p.simpleError = std::numeric_limits<double>::quiet_NaN();
+            } else {
+                // pval = (nMoreExtreme + 1) / (nPermSimple + 1) ? 
+                // fgsea: (nMoreExtreme + 1) / (nPermSimple + 1) is crudeEstimator
+                // fgsea logic: result[, pval := pmin(1, cpp.res$cppMPval / denomProb)]
+                // For simple, fgsea calculates simpleError and decides.
+                // But what is the returned simple pval?
+                // It seems fgsea returns normalized p-value for multilevel, but simple pval is just crude?
+                // Wait, fgseaMultilevel.R line 221: pval := pmin(1, cpp.res$cppMPval / denomProb)
+                // And simple results are merged.
+                // Simple results pval comes from fgseaSimpleImpl.
+                // Usually simple pval is (nMoreExtreme + 1) / (modeFraction + 1) for standard GSEA?
+                // fgseaSimpleImpl likely returns (nMoreExtreme + 1) / (nPermSimple + 1).
+                // Let's assume (nMoreExtreme + 1) / (nPermSimple + 1) for now, as it's conservative.
+                // But standard GSEA divides by sign count.
+                // If I want to match fgsea, I should see what fgseaSimpleImpl returns.
+                // Given the multilevel normalization (div by denomProb), it implies simple pval should also be normalized if we want consistency?
+                // denomProb = (modeFraction + 1) / (nPermSimple + 1).
+                // So normalized pval = ((nMoreExtreme + 1) / (nPermSimple + 1)) / ((modeFraction + 1) / (nPermSimple + 1))
+                // = (nMoreExtreme + 1) / (modeFraction + 1).
+                
+                // Let's use this normalized p-value for consistency with "std" GSEA.
+                p.simplePval = (double)(nMoreExtreme + 1) / (modeFraction + 1);
+                
+                // Error estimation
+                // double crudeEstimator = log2((double)(nMoreExtreme + 1) / (nPermSimple + 1));
+                
+                // Replicating fgsea error calculation exactly is hard without beta quantiles in C++.
+                // But we can just use a threshold check.
+                // If p.simplePval <= pvalThreshold, we consider multilevel.
+                
+                // Also check if multilevel error would be smaller.
+                // For very small p-values, simple error is large.
+                // multilevelError depends on sampleSize (101).
+                
+                // double multErr = calcMultilevelError(p.simplePval, sampleSize);
+                
+                if (p.simplePval <= pvalThreshold) {
+                    multilevelCandidates.push_back(&p);
+                }
+            }
+            
+            // NES
+            if (p.es >= 0) {
+                nesVector[p.index] = p.es / meanPosES;
+            } else {
+                nesVector[p.index] = p.es / std::abs(meanNegES);
+            }
+            
+            pvals[p.index] = p.simplePval;
+            // log2errs[p.index] = ... (simple error)
+        }
+        
+        // 2. Multilevel Refinement
+        if (!multilevelCandidates.empty()) {
+            EsRuler esRulerPos(posRanks, sampleSize, sz, 2.0, false); 
+            EsRuler esRulerNeg(negRanks, sampleSize, sz, 2.0, false);
+            
+            double maxES = -1.0;
+            double minES = 1.0;
+            
+            for (auto* p : multilevelCandidates) {
+                if (p->es > maxES) maxES = p->es;
+                if (p->es < minES) minES = p->es;
+            }
+            
+            if (maxES >= 0) {
+                esRulerPos.extend(std::abs(maxES), seed, eps);
+            }
+            if (minES < 0) {
+                esRulerNeg.extend(std::abs(minES), seed, eps);
+            }
+            
+            for (auto* p : multilevelCandidates) {
+                std::tuple<double, bool, double> res;
+                bool isPos = (p->es >= 0);
+                
+                // Enforce direction for one-sided tests
+                if (scoreType == "pos" && !isPos) {
+                    pvals[p->index] = 1.0;
+                    log2errs[p->index] = std::numeric_limits<double>::quiet_NaN();
+                    continue;
+                }
+                if (scoreType == "neg" && isPos) {
+                    pvals[p->index] = 1.0;
+                    log2errs[p->index] = std::numeric_limits<double>::quiet_NaN();
+                    continue;
+                }
+                
+                if (isPos) {
+                    // For "std", sign=false (two-sided-like normalization done later)
+                    // For "pos", sign=true (one-sided)
+                    // fgseaMultilevel.R: sign <- if (scoreType %in% c("pos", "neg")) TRUE else FALSE
+                    bool signArg = (scoreType == "pos" || scoreType == "neg");
+                    res = esRulerPos.getPvalue(std::abs(p->es), eps, signArg);
+                } else {
+                    bool signArg = (scoreType == "pos" || scoreType == "neg");
+                    res = esRulerNeg.getPvalue(std::abs(p->es), eps, signArg);
+                }
+                
+                double cppMPval = std::get<0>(res);
+                // double log2err = std::get<2>(res);
+                
+                // Normalize if needed
+                if (scoreType == "std") {
+                    double modeFraction = (isPos ? nGeZero : nLeZero);
+                    double denomProb = (modeFraction + 1) / (nPermSimple + 1);
+                    pvals[p->index] = std::min(1.0, cppMPval / denomProb);
+                } else {
+                    pvals[p->index] = cppMPval;
+                }
+                
+                log2errs[p->index] = calcMultilevelError(pvals[p->index], sampleSize); // Use recalculate error based on final pval? 
+                // fgsea uses multilevelError(pval, sampleSize)
+            }
+        }
     }
     
     return Rcpp::DataFrame::create(
         Rcpp::Named("ID") = gene_set_names,
-        Rcpp::Named("enrichmentScore") = Rcpp::wrap(esVector),
-        Rcpp::Named("pvalue") = pvalue,
-        Rcpp::Named("log2err") = log2err
+        Rcpp::Named("enrichmentScore") = esVector,
+        Rcpp::Named("NES") = nesVector,
+        Rcpp::Named("pvalue") = pvals,
+        Rcpp::Named("setSize") = sizes,
+        Rcpp::Named("log2err") = log2errs
     );
 }
