@@ -17,8 +17,8 @@ using namespace std;
 
 // Assuming 64-bit environment with __int128 support
 // If compilation fails on 32-bit, we might need a fallback or Boost dependency
-using int128  = __int128;
-using uint128 = unsigned __int128;
+__extension__ typedef __int128 int128;
+__extension__ typedef unsigned __int128 uint128;
 
 struct score_t {
   //  score = coef_ns / NS - coef_const / diff
