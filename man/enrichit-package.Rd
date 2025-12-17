@@ -4,9 +4,9 @@
 \name{enrichit-package}
 \alias{enrichit}
 \alias{enrichit-package}
-\title{enrichit: C++ Implementations of Functional Enrichment Analysis}
+\title{enrichit: 'C++' Implementations of Functional Enrichment Analysis}
 \description{
-Fast implementations of functional enrichment analysis methods using C++ via 'Rcpp'. Currently provides Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA). The multilevel GSEA algorithm is derived from the 'fgsea' package.
+Fast implementations of functional enrichment analysis methods using 'C++' via 'Rcpp'. Currently provides Over-Representation Analysis (ORA) and Gene Set Enrichment Analysis (GSEA). The multilevel GSEA algorithm is derived from the 'fgsea' package. Methods are described in Subramanian et al. (2005) \doi{10.1073/pnas.0506580102} and Korotkevich et al. (2021) \doi{10.1101/060012}.
 }
 \author{
 \strong{Maintainer}: Guangchuang Yu \email{guangchuangyu@gmail.com}

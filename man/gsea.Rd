@@ -90,7 +90,7 @@ gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2)
 result <- gsea(geneList=stats, gene_sets=gene_sets, nPerm=100)
 
 # Use adaptive permutation for more accurate p-values
-\dontrun{
+\donttest{
 result_adaptive <- gsea(geneList=stats, gene_sets=gene_sets, adaptive=TRUE)
 }
 

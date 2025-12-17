@@ -25,7 +25,6 @@ A data.frame with columns:
 Perform over-representation analysis using hypergeometric test (Fisher's exact test).
 }
 \examples{
-\dontrun{
 # Example data
 de_genes <- c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5")
 all_genes <- paste0("Gene", 1:1000)
@@ -37,6 +36,5 @@ gene_sets <- list(Pathway1 = gs1, Pathway2 = gs2, Pathway3 = gs3)
 
 result <- ora(gene=de_genes, gene_sets=gene_sets, universe=all_genes)
 head(result)
-}
 
 }

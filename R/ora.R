@@ -14,7 +14,6 @@
 #' \item{PValue}{Raw p-value from hypergeometric test}
 #'
 #' @examples
-#' \dontrun{
 #' # Example data
 #' de_genes <- c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5")
 #' all_genes <- paste0("Gene", 1:1000)
@@ -26,7 +25,6 @@
 #' 
 #' result <- ora(gene=de_genes, gene_sets=gene_sets, universe=all_genes)
 #' head(result)
-#' }
 #'
 #' @export
 ora <- function(gene, gene_sets, universe) {
