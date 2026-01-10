@@ -7,3 +7,4 @@ benchmark_vs_fgsea.R
 CLAUDE.md
 simple_benchmark.R
 .claude
+src/symbols.rds

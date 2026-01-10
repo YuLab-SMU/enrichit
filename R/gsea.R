@@ -123,6 +123,24 @@ gsea <- function(geneList, gene_sets,
         result$NES <- NA
     }
 
+    if (!all(c("rank", "leading_edge", "core_enrichment") %in% names(result))) {
+        ledge_rank <- integer(nrow(result))
+        ledge_str <- character(nrow(result))
+        ledge_core <- character(nrow(result))
+        for (i in seq_len(nrow(result))) {
+            sid <- result$ID[[i]]
+            gs <- gene_sets[[sid]]
+            ledge <- gsea_leading_edge_details(geneList, gs, exponent = exponent, scoreType = scoreType)
+            ledge_rank[[i]] <- ledge$rank
+            ledge_str[[i]] <- ledge$leading_edge
+            ledge_core[[i]] <- ledge$core_enrichment
+        }
+
+        if (!"rank" %in% names(result)) result$rank <- ledge_rank
+        if (!"leading_edge" %in% names(result)) result$leading_edge <- ledge_str
+        if (!"core_enrichment" %in% names(result)) result$core_enrichment <- ledge_core
+    }
+
     # Sort by absolute NES (descending) or pvalue (ascending)
     if (nrow(result) > 0) {
         if (!all(is.na(result$NES))) {
@@ -227,9 +245,10 @@ gsea_gson <- function(geneList,
     
     # Reorder columns
     expected_cols <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
-    other_cols <- setdiff(names(gsea_res), expected_cols)
-    gsea_res <- gsea_res[, c(expected_cols, other_cols)]
-    
+    # other_cols <- setdiff(names(gsea_res), expected_cols)
+    # gsea_res <- gsea_res[, c(expected_cols, other_cols)]
+    gsea_res <- gsea_res[, expected_cols]
+
     # Set row names
     rownames(gsea_res) <- gsea_res$ID
     

@@ -1,3 +1,7 @@
+# enrichit 0.0.9
+
++ add leading edge analysis for GSEA (2026-01-10, Sat)
+
 # enrichit 0.0.8
 
 + fixed bugs of multilevel GSEA in p value calculation (2025-12-10, Wed)
