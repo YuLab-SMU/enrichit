@@ -1,3 +1,7 @@
+# enrichit 0.0.9.001
+
++ update `ora_gson()` output columns (2026-01-11, Sun)
+
 # enrichit 0.0.9
 
 + add leading edge analysis for GSEA (2026-01-10, Sat)

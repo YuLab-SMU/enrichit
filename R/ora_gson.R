@@ -131,17 +131,18 @@ ora_gson <- function(gene,
         na_idx <- is.na(description)
         description[na_idx] <- ora_res$ID[na_idx]
         ora_res$Description <- description
-    } else {
-        if (!"Description" %in% names(ora_res)) {
-            ora_res$Description <- ora_res$ID
-        }
+    } 
+
+    if (!"Description" %in% names(ora_res)) {
+        ora_res$Description <- ora_res$ID
     }
 
     # Reorder columns
     expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor", "FoldEnrichment", "zScore", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
-    other_cols <- setdiff(names(ora_res), expected_cols)
-    ora_res <- ora_res[, c(expected_cols, other_cols)]
-    
+    # other_cols <- setdiff(names(ora_res), expected_cols)
+    # ora_res <- ora_res[, c(expected_cols, other_cols)]
+    ora_res <- ora_res[, expected_cols]
+
     # Sort by pvalue
     ora_res <- ora_res[order(ora_res$pvalue), ]
     
