@@ -245,12 +245,40 @@ gsea_gson <- function(geneList,
     
     # Reorder columns
     expected_cols <- c("ID", "Description", "setSize", "enrichmentScore", "NES", "pvalue", "p.adjust", "qvalues", "rank", "leading_edge", "core_enrichment")
+    
+    # Ensure all expected columns exist to avoid error
+    missing_cols <- setdiff(expected_cols, names(gsea_res))
+    if (length(missing_cols) > 0) {
+        warning("Missing columns in GSEA result: ", paste(missing_cols, collapse=", "), 
+                ". Filling with NA. (Note: 'qvalues' may be missing if p-value distribution does not allow q-value calculation)")
+        for (col in missing_cols) {
+            gsea_res[[col]] <- NA
+        }
+    }
+
     # other_cols <- setdiff(names(gsea_res), expected_cols)
     # gsea_res <- gsea_res[, c(expected_cols, other_cols)]
     gsea_res <- gsea_res[, expected_cols]
-
+    
     # Set row names
-    rownames(gsea_res) <- gsea_res$ID
+    # Ensure IDs are robust (handle NA and duplicates)
+    ids <- as.character(gsea_res$ID)
+    
+    # Handle NA IDs (convert to string "NA")
+    if (any(is.na(ids))) {
+        warning("NA values detected in gene set IDs. Replacing with string 'NA'.")
+        ids[is.na(ids)] <- "NA"
+    }
+    
+    # Handle Duplicate IDs
+    if (any(duplicated(ids))) {
+        dup_ids <- unique(ids[duplicated(ids)])
+        warning("Duplicate gene set IDs detected: ", paste(head(dup_ids), collapse=", "), 
+                "... (Total ", length(dup_ids), "). Unique suffixes added.")
+        ids <- make.unique(ids)
+    }
+    
+    rownames(gsea_res) <- ids
     
     params <- list(pvalueCutoff = pvalueCutoff,
                    nPerm = nPerm,

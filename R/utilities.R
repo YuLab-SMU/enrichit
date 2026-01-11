@@ -15,12 +15,12 @@ calculate_qvalue <- function(pvals) {
     if (length(pvals) == 0)
         return(numeric(0))
 
-    qobj <- tryCatch(qvalue::qvalue(pvals, lambda=0.05, pi0.method="bootstrap"), error=function(e) NULL)
+    qobj <- tryCatch(qvalue::qvalue(pvals), error=function(e) NULL)
 
     if (inherits(qobj, "qvalue")) {
         qvalues <- qobj$qvalues
     } else {
-        qvalues <- NA
+        qvalues <- rep(NA, length(pvals))
     }
     return(qvalues)
 }
