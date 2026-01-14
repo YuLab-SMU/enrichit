@@ -18,11 +18,11 @@ calculate_qvalue <- function(pvals) {
     qobj <- tryCatch(qvalue::qvalue(pvals), error=function(e) NULL)
 
     if (inherits(qobj, "qvalue")) {
-        qvalues <- qobj$qvalues
+        qv <- qobj$qvalues
     } else {
-        qvalues <- rep(NA, length(pvals))
+        qv <- rep(NA, length(pvals))
     }
-    return(qvalues)
+    return(qv)
 }
 
 get_geneSet_index <- function(geneSets, minGSSize, maxGSSize) {
