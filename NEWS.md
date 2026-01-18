@@ -1,4 +1,4 @@
-# enrichit 0.0.9.002
+# enrichit 0.1.0
 
 + fix bugs in `gsea_gson()` and `ora_gson()` (2026-01-11, Sun)
     - handle missing columns (e.g., qvalues) gracefully by filling with NA
