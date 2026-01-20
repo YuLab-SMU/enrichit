@@ -17,6 +17,7 @@
 #' @slot termsim Similarity between term
 #' @slot method method of calculating the similarity between nodes
 #' @slot dr dimension reduction result
+#' @slot organism organism
 #' @exportClass compareClusterResult
 #' @author Guangchuang Yu \url{https://yulab-smu.top}
 #' @exportClass compareClusterResult
@@ -34,7 +35,8 @@ setClass("compareClusterResult",
              .call          = "call",
              termsim        = "matrix",
              method         = "character",
-             dr             = "list"
+             dr             = "list",
+             organism       = "character"
          )
          )
 

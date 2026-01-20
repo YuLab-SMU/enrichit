@@ -1,3 +1,7 @@
+# enrichit 0.1.0.001
+
++ add `organism` slot in `compareClusterResult` (2026-01-20, Tue)
+
 # enrichit 0.1.0
 
 + fix bugs in `gsea_gson()` and `ora_gson()` (2026-01-11, Sun)
