@@ -4,7 +4,7 @@
 \alias{EXTID2NAME}
 \title{EXTID2NAME}
 \usage{
-EXTID2NAME(OrgDb, geneID, keytype)
+EXTID2NAME(OrgDb, geneID, keytype, toType = "SYMBOL")
 }
 \arguments{
 \item{OrgDb}{OrgDb}
@@ -12,6 +12,8 @@ EXTID2NAME(OrgDb, geneID, keytype)
 \item{geneID}{entrez gene ID}
 
 \item{keytype}{keytype}
+
+\item{toType}{ID type of the output}
 }
 \value{
 gene symbol

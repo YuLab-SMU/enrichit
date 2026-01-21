@@ -5,14 +5,15 @@
 #' @param x enrichResult Object
 #' @param OrgDb OrgDb
 #' @param keyType keyType of gene
+#' @param toType ID type of the output
 #' @return enrichResult Object
 #' @author Guangchuang Yu
 # @importFrom yulab.utils load_OrgDb
 #' @export
-setReadable <- function(x, OrgDb, keyType="auto") {
+setReadable <- function(x, OrgDb, keyType="auto", toType="SYMBOL") {
     OrgDb <- load_OrgDb(OrgDb)
-    if (!'SYMBOL' %in% AnnotationDbi::columns(OrgDb)) {
-        warning("Fail to convert input geneID to SYMBOL since no SYMBOL information available in the provided OrgDb...")
+    if (!toType %in% AnnotationDbi::columns(OrgDb)) {
+        warning("Fail to convert input geneID to ", toType, " since no ", toType, " information available in the provided OrgDb...")
     }
 
     if (!(is(x, "enrichResult") || is(x, "groupGOResult") || is(x, "gseaResult") || is(x,"compareClusterResult")))
@@ -51,7 +52,7 @@ setReadable <- function(x, OrgDb, keyType="auto") {
         genes <- x@gene
     }
 
-    gn <- EXTID2NAME(OrgDb, genes, keyType)
+    gn <- EXTID2NAME(OrgDb, genes, keyType, toType)
 
 
     if(isCompare) {
@@ -106,11 +107,12 @@ setReadable <- function(x, OrgDb, keyType="auto") {
 #' @param OrgDb OrgDb
 #' @param geneID entrez gene ID
 #' @param keytype keytype
+#' @param toType ID type of the output
 #' @return gene symbol
 # @importFrom yulab.utils load_OrgDb
 #' @export
 #' @author Guangchuang Yu \url{https://yulab-smu.top}
-EXTID2NAME <- function(OrgDb, geneID, keytype) {
+EXTID2NAME <- function(OrgDb, geneID, keytype, toType = "SYMBOL") {
     OrgDb <- load_OrgDb(OrgDb)
     kt <- AnnotationDbi::keytypes(OrgDb)
     if (! keytype %in% kt) {
@@ -118,20 +120,20 @@ EXTID2NAME <- function(OrgDb, geneID, keytype) {
     }
 
     gn.df <- suppressMessages(
-        AnnotationDbi::select(OrgDb, keys=geneID, keytype=keytype, columns="SYMBOL")
+        AnnotationDbi::select(OrgDb, keys=geneID, keytype=keytype, columns=toType)
     )
 
     gn.df <- unique(gn.df)
-    colnames(gn.df) <- c("GeneID", "SYMBOL")
+    colnames(gn.df) <- c("GeneID", "NAME")
 
     unmap_geneID <- geneID[!geneID %in% gn.df$GeneID]
     if (length(unmap_geneID) != 0) {
         unmap_geneID.df = data.frame(GeneID = unmap_geneID,
-                                     SYMBOL = unmap_geneID)
+                                     NAME = unmap_geneID)
         gn.df <- rbind(gn.df, unmap_geneID.df)
     }
 
-    gn <- gn.df$SYMBOL
+    gn <- gn.df$NAME
     names(gn) <- gn.df$GeneID
     return(gn)
 }

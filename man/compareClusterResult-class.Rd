@@ -36,6 +36,8 @@ categories at specific level or GO enrichment analysis.
 \item{\code{method}}{method of calculating the similarity between nodes}
 
 \item{\code{dr}}{dimension reduction result}
+
+\item{\code{organism}}{organism}
 }}
 
 \seealso{
