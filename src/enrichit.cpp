@@ -86,12 +86,9 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         int m = M;      // total in gene set (in universe)
         int n = N - M;  // total NOT in gene set (in universe)
         int k = K;      // total DE genes (in universe)
-        int min_ak = std::min(m, k);
-        
-        double p_val = 0.0;
-        for (int x = count; x <= min_ak; ++x) {
-            p_val += dhyper(x, m, n, k);
-        }
+        double p_val = R::phyper((double)(count - 1), (double)m, (double)n, (double)k, 0, 0);
+        if (p_val < 0.0) p_val = 0.0;
+        if (p_val > 1.0) p_val = 1.0;
         p_value[i] = p_val;
     }
     

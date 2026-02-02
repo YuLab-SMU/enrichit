@@ -102,6 +102,30 @@ ora_gson <- function(gene,
         ora_res$FoldEnrichment <- (ora_res$Count / ora_res$DESize) / (ora_res$SetSize / ora_res$UniverseSize)
     }
 
+    p <- suppressWarnings(as.numeric(ora_res$pvalue))
+    invalid <- is.na(p) | !is.finite(p) | p < 0 | p > 1
+    if (any(invalid)) {
+        ids <- as.character(ora_res$ID)
+        bad_i <- which(invalid)
+        head_i <- bad_i[seq_len(min(length(bad_i), 10))]
+        bad_preview <- paste0(ids[head_i], "=", format(p[head_i], digits = 4, scientific = TRUE), collapse = ", ")
+        warning(
+            "Invalid p-values detected in ORA result (",
+            length(bad_i),
+            "/",
+            length(p),
+            "). Examples: ",
+            bad_preview
+        )
+        too_small <- !is.na(p) & is.finite(p) & p < 0
+        too_large <- !is.na(p) & is.finite(p) & p > 1
+        p[too_small] <- 0
+        p[too_large] <- 1
+        ora_res$pvalue <- p
+    } else if (!isTRUE(all.equal(p, ora_res$pvalue))) {
+        ora_res$pvalue <- p
+    }
+
     # Calculate p.adjust
     ora_res$p.adjust <- p.adjust(ora_res$pvalue, method=pAdjustMethod)
 

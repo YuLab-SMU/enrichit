@@ -1,4 +1,16 @@
-# enrichit 0.1.0.002
+# enrichit 0.1.1.001
+
++ improve robustness of `calculate_qvalue()` (2026-02-02, Mon)
+    - handle missing `qvalue` package gracefully
+    - retry with different parameters if `qvalue()` fails
+    - handle invalid p-values (NA, infinite, out of range)
++ validate p-values in `ora_gson()` (2026-02-02, Mon)
+    - ensure p-values are within [0, 1] range
+    - warn and report invalid p-values
++ optimize ORA p-value calculation in C++ (2026-02-02, Mon)
+    - use `phyper` instead of summing `dhyper` for better performance and precision
+
+# enrichit 0.1.1
 
 + update `setReadable()` to support converting gene ID to other types (not limited to SYMBOL) (2026-01-21, Wed)
 + add `organism` slot in `compareClusterResult` (2026-01-20, Tue)

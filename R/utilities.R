@@ -15,12 +15,62 @@ calculate_qvalue <- function(pvals) {
     if (length(pvals) == 0)
         return(numeric(0))
 
-    qobj <- tryCatch(qvalue::qvalue(pvals), error=function(e) NULL)
+    # Check if qvalue package is available
+    if (!requireNamespace("qvalue", quietly = TRUE)) {
+        warning("qvalue package not installed. qvalue column will be NA.")
+        return(rep(NA_real_, length(pvals)))
+    }
+
+    qv <- rep(NA_real_, length(pvals))
+    ok <- is.finite(pvals) & !is.na(pvals) & pvals >= 0 & pvals <= 1
+    if (any(!ok)) {
+        warning("Invalid p-values detected (NA, non-finite, <0, or >1). qvalue will be computed on valid p-values only.")
+    }
+
+    p <- pvals[ok]
+    if (length(p) == 0) {
+        return(qv)
+    }
+
+    if (all(p == 1)) {
+        qv[ok] <- 1
+        return(qv)
+    }
+
+    if (all(p == 0)) {
+        qv[ok] <- 0
+        return(qv)
+    }
+
+    qobj <- NULL
+    last_err <- NULL
+    try_qvalue <- function(expr) {
+        tryCatch(expr, error = function(e) {
+            last_err <<- e
+            NULL
+        })
+    }
+
+    qobj <- try_qvalue(qvalue::qvalue(p))
+    if (!inherits(qobj, "qvalue")) {
+        qobj <- try_qvalue(qvalue::qvalue(p, lambda = 0.05, pi0.method = "bootstrap"))
+    }
+    if (!inherits(qobj, "qvalue")) {
+        qobj <- try_qvalue(qvalue::qvalue(p, lambda = seq(0, 0.9, 0.05), pi0.method = "bootstrap"))
+    }
+    if (!inherits(qobj, "qvalue")) {
+        qobj <- try_qvalue(qvalue::qvalue(p, lambda = seq(0, 0.95, 0.05), pi0.method = "bootstrap"))
+    }
 
     if (inherits(qobj, "qvalue")) {
-        qv <- qobj$qvalues
+        qv[ok] <- qobj$qvalues
+        return(qv)
+    }
+
+    if (inherits(last_err, "error")) {
+        warning("qvalue::qvalue() failed, returning NA for qvalue. Error: ", conditionMessage(last_err))
     } else {
-        qv <- rep(NA, length(pvals))
+        warning("qvalue::qvalue() failed, returning NA for qvalue. This may be due to p-value distribution.")
     }
     return(qv)
 }
