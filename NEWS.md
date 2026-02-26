@@ -1,4 +1,4 @@
-# enrichit 0.1.1.001
+# enrichit 0.1.2
 
 + improve robustness of `calculate_qvalue()` (2026-02-02, Mon)
     - handle missing `qvalue` package gracefully
