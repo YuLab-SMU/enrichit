@@ -1,3 +1,9 @@
+# enrichit 0.1.3
+
++ fix `gsea_gson()` (2026-03-10, Tue)
+    - force sorting of `geneList` to ensure result object is consistent with input
+    - resolves issue with `enrichplot::gseaplot` showing incorrect metric/color alignment
+
 # enrichit 0.1.2
 
 + improve robustness of `calculate_qvalue()` (2026-02-02, Mon)

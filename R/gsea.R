@@ -183,6 +183,14 @@ gsea_gson <- function(geneList,
         stop("gson should be a GSON object")
     }
 
+    # Ensure geneList is sorted
+    if (is.unsorted(rev(geneList))) {
+        if (verbose) {
+            warning("geneList is not sorted in descending order. Sorting it now.")
+        }
+        geneList <- sort(geneList, decreasing = TRUE)
+    }
+
     ## query external ID to Term ID
     gene <- names(geneList)
     
