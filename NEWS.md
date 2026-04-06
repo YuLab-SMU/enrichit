@@ -1,3 +1,11 @@
+# enrichit 0.1.3.001
+
++ fix GSON helper functions (2026-04-06, Mon)
+    - correct `TERM2NAME()` for `GSON` objects to map `gsid` to term names properly
+    - correct `TERMID2EXTID()` for `GSON` objects to return gene vectors by requested term order
+    - return `character(0)` for missing terms to keep downstream behavior stable
+    - resolves malformed `Description.*` columns in downstream `clusterProfiler::groupGO()`
+
 # enrichit 0.1.3
 
 + fix `gsea_gson()` (2026-03-10, Tue)

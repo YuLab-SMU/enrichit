@@ -231,10 +231,12 @@ TERM2NAME <- function(term, gson) {
         res[i] <- term[i]
     } else if (inherits(gson, "GSON")) {
         gsid2name <- gson@gsid2name
-        i <- match(term, gsid2name)
-        j <- !is.na(i)
-        res <- term
-        res[j] <- gsid2name[i[j]]
+        res <- as.character(term)
+        if (!is.null(gsid2name) && nrow(gsid2name) > 0L) {
+            i <- match(as.character(term), as.character(gsid2name$gsid))
+            j <- !is.na(i)
+            res[j] <- as.character(gsid2name$name[i[j]])
+        }
     } else {
         res <- as.character(term)
     }
@@ -246,8 +248,14 @@ TERM2NAME <- function(term, gson) {
 TERMID2EXTID <- function(term, gson) {
     if (inherits(gson, "GSON")) {
         gsid2gene <- gson@gsid2gene
-        gsid2gene <- gsid2gene[gsid2gene %in% term, ]
-        res <- split(gsid2gene, gsid2gene)
+        res <- split(
+            as.character(gsid2gene$gene),
+            as.character(gsid2gene$gsid)
+        )
+        res <- res[as.character(term)]
+        names(res) <- as.character(term)
+        i <- vapply(res, is.null, logical(1))
+        res[i] <- list(character(0))
         return(res)
     } else if (inherits(gson, "environment")) {
         PATHID2EXTID <- get("PATHID2EXTID", envir = gson)
