@@ -1,4 +1,4 @@
-# enrichit 0.1.3.001
+# enrichit 0.1.4
 
 + fix GSON helper functions (2026-04-06, Mon)
     - correct `TERM2NAME()` for `GSON` objects to map `gsid` to term names properly

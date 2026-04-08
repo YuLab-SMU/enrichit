@@ -95,31 +95,31 @@ test_that("Multilevel GSEA works correctly with new parameters", {
   
   # Test scoreType = "pos"
   set.seed(123)
-  res_pos <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
-                  scoreType = "pos", nPermSimple = 1000)
+  res_pos <- suppressWarnings(gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "pos", nPermSimple = 1000))
   
   expect_true(is.data.frame(res_pos))
   top_pos <- res_pos[res_pos$ID == "Top", ]
   expect_lt(top_pos$pvalue, 0.05)
   
   # Test scoreType = "neg"
-  res_neg <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
-                  scoreType = "neg", nPermSimple = 1000)
+  res_neg <- suppressWarnings(gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "neg", nPermSimple = 1000))
   
   expect_true(is.data.frame(res_neg))
   bottom_neg <- res_neg[res_neg$ID == "Bottom", ]
   expect_lt(bottom_neg$pvalue, 0.05)
   
   # Test scoreType = "std" (default)
-  res_std <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
-                  scoreType = "std", nPermSimple = 1000)
+  res_std <- suppressWarnings(gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                  scoreType = "std", nPermSimple = 1000))
   
   expect_true(is.data.frame(res_std))
   expect_lt(res_std[res_std$ID == "Top", "pvalue"], 0.05)
   expect_lt(res_std[res_std$ID == "Bottom", "pvalue"], 0.05)
   
   # Check if nPermSimple parameter is accepted and works (by checking it doesn't crash)
-  res_simple <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
-                     nPermSimple = 500)
+  res_simple <- suppressWarnings(gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel", 
+                     nPermSimple = 500))
   expect_true(is.data.frame(res_simple))
 })

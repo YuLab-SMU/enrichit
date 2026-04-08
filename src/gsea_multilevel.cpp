@@ -460,6 +460,25 @@ double calcMultilevelError(double pval, int sampleSize) {
     return sqrt(term1 * term2) / log(2.0);
 }
 
+double calcSimpleLog2err(int nMoreExtreme, int nPermSimple) {
+    return sqrt(R::trigamma(nMoreExtreme + 1.0) - R::trigamma(nPermSimple + 1.0)) / log(2.0);
+}
+
+double calcSimpleError(int nMoreExtreme, int nPermSimple) {
+    double crudeEstimator = log2((double)(nMoreExtreme + 1) / (nPermSimple + 1));
+    double leftBorder = -std::numeric_limits<double>::infinity();
+    double rightBorder = 0.0;
+
+    if (nMoreExtreme > 0) {
+        leftBorder = log2(R::qbeta(0.025, nMoreExtreme, nPermSimple - nMoreExtreme + 1, 1, 0));
+    }
+    if (nMoreExtreme < nPermSimple) {
+        rightBorder = log2(R::qbeta(0.975, nMoreExtreme + 1, nPermSimple - nMoreExtreme, 1, 0));
+    }
+
+    return 0.5 * std::max(crudeEstimator - leftBorder, rightBorder - crudeEstimator);
+}
+
 // [[Rcpp::export]]
 Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList, 
                                     const Rcpp::List& gene_sets, 
@@ -475,18 +494,18 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
                                     int nPermSimple = 1000,
                                     std::string scoreType = "std") {
     using namespace enrichit;
+    (void)minPerm;
+    (void)maxPerm;
+    (void)pvalThreshold;
+    (void)exponent;
+    (void)method;
     
     int n_sets = gene_sets.size();
     int n_genes = geneList.size();
     
-    // Prepare ranks (absolute values, scaled to integers)
     std::vector<int64_t> posRanks(n_genes);
     for (int i = 0; i < n_genes; ++i) {
-        double val = std::abs(geneList[i]);
-        if (exponent != 1.0) {
-            val = std::pow(val, exponent);
-        }
-        posRanks[i] = llround(val * 1000000.0);
+        posRanks[i] = llround(geneList[i]);
     }
     std::vector<int64_t> negRanks = posRanks;
     std::reverse(negRanks.begin(), negRanks.end());
@@ -503,11 +522,12 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
         double es;
         int size;
         std::vector<int> sample;
-        // Simple permutation stats
         int nGeEs = 0;
         int nLeEs = 0;
         double simplePval = 1.0;
-        double simpleError = 0.0;
+        double simpleError = std::numeric_limits<double>::quiet_NaN();
+        double denomProb = std::numeric_limits<double>::quiet_NaN();
+        int nMoreExtreme = 0;
     };
     
     std::map<int, std::vector<PathwayInfo>> sizeGroups;
@@ -549,12 +569,10 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
     
     random_engine_t rng(static_cast<uint32_t>(seed));
     
-    // Iterate over size groups
     for (auto& group : sizeGroups) {
         int sz = group.first;
         auto& pathways = group.second;
         
-        // 1. Simple Permutations
         int nGeZero = 0;
         int nLeZero = 0;
         double sumPosES = 0.0;
@@ -591,91 +609,66 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
             }
         }
         
-        double meanPosES = (nGeZero > 0) ? sumPosES / nGeZero : 1.0; // Avoid div by zero
-        double meanNegES = (nLeZero > 0) ? sumNegES / nLeZero : -1.0;
+        double meanPosES = (nGeZero > 0) ? sumPosES / nGeZero : std::numeric_limits<double>::quiet_NaN();
+        double meanNegES = (nLeZero > 0) ? sumNegES / nLeZero : std::numeric_limits<double>::quiet_NaN();
         
         std::vector<PathwayInfo*> multilevelCandidates;
         
         for (auto& p : pathways) {
             esVector[p.index] = p.es;
             sizes[p.index] = p.size;
-            
-            // Calculate Simple P-value and Error
-            double modeFraction = 1.0; // Count of samples with same sign
-            int nMoreExtreme = 0;
-            
+
+            double modeFraction = std::numeric_limits<double>::quiet_NaN();
+            double pathwayPval = std::numeric_limits<double>::quiet_NaN();
+            double pathwayNES = std::numeric_limits<double>::quiet_NaN();
+
             if (scoreType == "std") {
-                if (p.es >= 0) {
-                    nMoreExtreme = p.nGeEs;
-                    modeFraction = nGeZero;
-                } else {
-                    nMoreExtreme = p.nLeEs;
-                    modeFraction = nLeZero;
+                if ((p.es > 0 && nGeZero > 0 && meanPosES != 0) || (p.es <= 0 && nLeZero > 0 && meanNegES != 0)) {
+                    pathwayNES = p.es / (p.es > 0 ? meanPosES : std::abs(meanNegES));
+                    pathwayPval = std::min(
+                        (1.0 + p.nLeEs) / (1.0 + nLeZero),
+                        (1.0 + p.nGeEs) / (1.0 + nGeZero)
+                    );
                 }
+                p.nMoreExtreme = (p.es > 0) ? p.nGeEs : p.nLeEs;
+                modeFraction = (p.es >= 0) ? nGeZero : nLeZero;
             } else if (scoreType == "pos") {
-                nMoreExtreme = p.nGeEs;
-                modeFraction = nPermSimple; // Use total count for one-sided
-            } else if (scoreType == "neg") {
-                nMoreExtreme = p.nLeEs;
-                modeFraction = nPermSimple; // Use total count for one-sided
-            }
-            
-            if (modeFraction < 10) {
-                p.simplePval = std::numeric_limits<double>::quiet_NaN();
-                p.simpleError = std::numeric_limits<double>::quiet_NaN();
+                if (p.es >= 0 && nGeZero > 0 && meanPosES != 0) {
+                    pathwayNES = p.es / meanPosES;
+                    pathwayPval = (1.0 + p.nGeEs) / (1.0 + nGeZero);
+                }
+                p.nMoreExtreme = p.nGeEs;
+                modeFraction = nGeZero;
             } else {
-                // pval = (nMoreExtreme + 1) / (nPermSimple + 1) ? 
-                // fgsea: (nMoreExtreme + 1) / (nPermSimple + 1) is crudeEstimator
-                // fgsea logic: result[, pval := pmin(1, cpp.res$cppMPval / denomProb)]
-                // For simple, fgsea calculates simpleError and decides.
-                // But what is the returned simple pval?
-                // It seems fgsea returns normalized p-value for multilevel, but simple pval is just crude?
-                // Wait, fgseaMultilevel.R line 221: pval := pmin(1, cpp.res$cppMPval / denomProb)
-                // And simple results are merged.
-                // Simple results pval comes from fgseaSimpleImpl.
-                // Usually simple pval is (nMoreExtreme + 1) / (modeFraction + 1) for standard GSEA?
-                // fgseaSimpleImpl likely returns (nMoreExtreme + 1) / (nPermSimple + 1).
-                // Let's assume (nMoreExtreme + 1) / (nPermSimple + 1) for now, as it's conservative.
-                // But standard GSEA divides by sign count.
-                // If I want to match fgsea, I should see what fgseaSimpleImpl returns.
-                // Given the multilevel normalization (div by denomProb), it implies simple pval should also be normalized if we want consistency?
-                // denomProb = (modeFraction + 1) / (nPermSimple + 1).
-                // So normalized pval = ((nMoreExtreme + 1) / (nPermSimple + 1)) / ((modeFraction + 1) / (nPermSimple + 1))
-                // = (nMoreExtreme + 1) / (modeFraction + 1).
-                
-                // Let's use this normalized p-value for consistency with "std" GSEA.
-                p.simplePval = (double)(nMoreExtreme + 1) / (modeFraction + 1);
-                
-                // Error estimation
-                // double crudeEstimator = log2((double)(nMoreExtreme + 1) / (nPermSimple + 1));
-                
-                // Replicating fgsea error calculation exactly is hard without beta quantiles in C++.
-                // But we can just use a threshold check.
-                // If p.simplePval <= pvalThreshold, we consider multilevel.
-                
-                // Also check if multilevel error would be smaller.
-                // For very small p-values, simple error is large.
-                // multilevelError depends on sampleSize (101).
-                
-                // double multErr = calcMultilevelError(p.simplePval, sampleSize);
-                
-                if (p.simplePval <= pvalThreshold) {
+                if (p.es <= 0 && nLeZero > 0 && meanNegES != 0) {
+                    pathwayNES = p.es / std::abs(meanNegES);
+                    pathwayPval = (1.0 + p.nLeEs) / (1.0 + nLeZero);
+                }
+                p.nMoreExtreme = p.nLeEs;
+                modeFraction = nLeZero;
+            }
+
+            nesVector[p.index] = pathwayNES;
+            p.simplePval = pathwayPval;
+
+            if (!std::isfinite(pathwayPval) || modeFraction < 10) {
+                p.simplePval = std::numeric_limits<double>::quiet_NaN();
+                nesVector[p.index] = std::numeric_limits<double>::quiet_NaN();
+            } else {
+                p.simpleError = calcSimpleError(p.nMoreExtreme, nPermSimple);
+                double multError = calcMultilevelError((double)(p.nMoreExtreme + 1) / (nPermSimple + 1), sampleSize);
+                p.denomProb = (modeFraction + 1) / (nPermSimple + 1);
+
+                if (multError < p.simpleError) {
                     multilevelCandidates.push_back(&p);
+                } else {
+                    log2errs[p.index] = calcSimpleLog2err(p.nMoreExtreme, nPermSimple);
                 }
             }
-            
-            // NES
-            if (p.es >= 0) {
-                nesVector[p.index] = p.es / meanPosES;
-            } else {
-                nesVector[p.index] = p.es / std::abs(meanNegES);
-            }
-            
+
             pvals[p.index] = p.simplePval;
-            // log2errs[p.index] = ... (simple error)
         }
         
-        // 2. Multilevel Refinement
         if (!multilevelCandidates.empty()) {
             EsRuler esRulerPos(posRanks, sampleSize, sz, 2.0, false); 
             EsRuler esRulerNeg(negRanks, sampleSize, sz, 2.0, false);
@@ -696,46 +689,22 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
             }
             
             for (auto* p : multilevelCandidates) {
-                std::tuple<double, bool, double> res;
                 bool isPos = (p->es >= 0);
-                
-                // Enforce direction for one-sided tests
-                if (scoreType == "pos" && !isPos) {
-                    pvals[p->index] = 1.0;
-                    log2errs[p->index] = std::numeric_limits<double>::quiet_NaN();
-                    continue;
-                }
-                if (scoreType == "neg" && isPos) {
-                    pvals[p->index] = 1.0;
-                    log2errs[p->index] = std::numeric_limits<double>::quiet_NaN();
-                    continue;
-                }
-                
-                if (isPos) {
-                    // For "std", sign=false (two-sided-like normalization done later)
-                    // For "pos", sign=true (one-sided)
-                    // fgseaMultilevel.R: sign <- if (scoreType %in% c("pos", "neg")) TRUE else FALSE
-                    bool signArg = (scoreType == "pos" || scoreType == "neg");
-                    res = esRulerPos.getPvalue(std::abs(p->es), eps, signArg);
-                } else {
-                    bool signArg = (scoreType == "pos" || scoreType == "neg");
-                    res = esRulerNeg.getPvalue(std::abs(p->es), eps, signArg);
-                }
-                
+                bool signArg = (scoreType == "pos" || scoreType == "neg");
+                std::tuple<double, bool, double> res = isPos ?
+                    esRulerPos.getPvalue(std::abs(p->es), eps, signArg) :
+                    esRulerNeg.getPvalue(std::abs(p->es), eps, signArg);
+
                 double cppMPval = std::get<0>(res);
-                // double log2err = std::get<2>(res);
-                
-                // Normalize if needed
-                if (scoreType == "std") {
-                    double modeFraction = (isPos ? nGeZero : nLeZero);
-                    double denomProb = (modeFraction + 1) / (nPermSimple + 1);
-                    pvals[p->index] = std::min(1.0, cppMPval / denomProb);
-                } else {
-                    pvals[p->index] = cppMPval;
+                bool isCpGeHalf = std::get<1>(res);
+                double finalPval = std::min(1.0, cppMPval / p->denomProb);
+                pvals[p->index] = finalPval;
+                log2errs[p->index] = isCpGeHalf ? calcMultilevelError(finalPval, sampleSize) : std::numeric_limits<double>::quiet_NaN();
+
+                if (!std::isnan(finalPval) && finalPval < eps) {
+                    pvals[p->index] = eps;
+                    log2errs[p->index] = std::numeric_limits<double>::quiet_NaN();
                 }
-                
-                log2errs[p->index] = calcMultilevelError(pvals[p->index], sampleSize); // Use recalculate error based on final pval? 
-                // fgsea uses multilevelError(pval, sampleSize)
             }
         }
     }

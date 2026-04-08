@@ -25,8 +25,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // gsea_cpp
-Rcpp::DataFrame gsea_cpp(const Rcpp::NumericVector& stats, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int nPerm, double exponent, std::string method);
-RcppExport SEXP _enrichit_gsea_cpp(SEXP statsSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP nPermSEXP, SEXP exponentSEXP, SEXP methodSEXP) {
+Rcpp::DataFrame gsea_cpp(const Rcpp::NumericVector& stats, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int nPerm, double exponent, std::string method, int seed);
+RcppExport SEXP _enrichit_gsea_cpp(SEXP statsSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP nPermSEXP, SEXP exponentSEXP, SEXP methodSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -36,13 +36,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type nPerm(nPermSEXP);
     Rcpp::traits::input_parameter< double >::type exponent(exponentSEXP);
     Rcpp::traits::input_parameter< std::string >::type method(methodSEXP);
-    rcpp_result_gen = Rcpp::wrap(gsea_cpp(stats, gene_sets, gene_set_names, nPerm, exponent, method));
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(gsea_cpp(stats, gene_sets, gene_set_names, nPerm, exponent, method, seed));
     return rcpp_result_gen;
 END_RCPP
 }
 // gsea_adaptive_cpp
-Rcpp::DataFrame gsea_adaptive_cpp(const Rcpp::NumericVector& stats, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int minPerm, int maxPerm, double pvalThreshold, double exponent, std::string method);
-RcppExport SEXP _enrichit_gsea_adaptive_cpp(SEXP statsSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP minPermSEXP, SEXP maxPermSEXP, SEXP pvalThresholdSEXP, SEXP exponentSEXP, SEXP methodSEXP) {
+Rcpp::DataFrame gsea_adaptive_cpp(const Rcpp::NumericVector& stats, const Rcpp::List& gene_sets, const Rcpp::CharacterVector& gene_set_names, int minPerm, int maxPerm, double pvalThreshold, double exponent, std::string method, int seed);
+RcppExport SEXP _enrichit_gsea_adaptive_cpp(SEXP statsSEXP, SEXP gene_setsSEXP, SEXP gene_set_namesSEXP, SEXP minPermSEXP, SEXP maxPermSEXP, SEXP pvalThresholdSEXP, SEXP exponentSEXP, SEXP methodSEXP, SEXP seedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -54,7 +55,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type pvalThreshold(pvalThresholdSEXP);
     Rcpp::traits::input_parameter< double >::type exponent(exponentSEXP);
     Rcpp::traits::input_parameter< std::string >::type method(methodSEXP);
-    rcpp_result_gen = Rcpp::wrap(gsea_adaptive_cpp(stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method));
+    Rcpp::traits::input_parameter< int >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(gsea_adaptive_cpp(stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, seed));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -97,8 +99,8 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_ora_cpp", (DL_FUNC) &_enrichit_ora_cpp, 4},
-    {"_enrichit_gsea_cpp", (DL_FUNC) &_enrichit_gsea_cpp, 6},
-    {"_enrichit_gsea_adaptive_cpp", (DL_FUNC) &_enrichit_gsea_adaptive_cpp, 8},
+    {"_enrichit_gsea_cpp", (DL_FUNC) &_enrichit_gsea_cpp, 7},
+    {"_enrichit_gsea_adaptive_cpp", (DL_FUNC) &_enrichit_gsea_adaptive_cpp, 9},
     {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 13},
     {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
     {NULL, NULL, 0}

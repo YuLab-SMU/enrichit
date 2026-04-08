@@ -206,7 +206,8 @@ Rcpp::DataFrame gsea(const Rcpp::NumericVector& stats,
                      const Rcpp::CharacterVector& gene_set_names,
                      int nPerm,
                      double exponent,
-                     std::string method) {
+                     std::string method,
+                     int seed) {
     
     int n_sets = gene_sets.size();
     int n_genes = stats.size();
@@ -262,7 +263,7 @@ Rcpp::DataFrame gsea(const Rcpp::NumericVector& stats,
     }
     
     std::vector<std::vector<double>> perm_es(n_sets, std::vector<double>(nPerm));
-    std::mt19937 rng(12345);
+    std::mt19937 rng(static_cast<uint32_t>(seed));
     
     if (method == "permute") {
         // Label permutation: shuffle indices once per permutation
@@ -381,7 +382,8 @@ Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
                               int maxPerm,
                               double pvalThreshold,
                               double exponent,
-                              std::string method) {
+                              std::string method,
+                              int seed) {
     
     int n_sets = gene_sets.size();
     int n_genes = stats.size();
@@ -457,7 +459,7 @@ Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
         }
         
         // Thread-local RNG for thread safety
-        std::mt19937 rng(12345 + i * 1000);
+        std::mt19937 rng(static_cast<uint32_t>(seed + i * 1000));
         
         int total_perms = 0;
         int count_better = 0;
@@ -576,8 +578,9 @@ Rcpp::DataFrame gsea_cpp(const Rcpp::NumericVector& stats,
                          const Rcpp::CharacterVector& gene_set_names,
                          int nPerm = 1000,
                          double exponent = 1.0,
-                         std::string method = "sample") {
-    return enrichit::gsea(stats, gene_sets, gene_set_names, nPerm, exponent, method);
+                         std::string method = "sample",
+                         int seed = 12345) {
+    return enrichit::gsea(stats, gene_sets, gene_set_names, nPerm, exponent, method, seed);
 }
 
 // [[Rcpp::export]]
@@ -588,6 +591,7 @@ Rcpp::DataFrame gsea_adaptive_cpp(const Rcpp::NumericVector& stats,
                                   int maxPerm = 100000,
                                   double pvalThreshold = 0.1,
                                   double exponent = 1.0,
-                                  std::string method = "sample") {
-    return enrichit::gsea_adaptive(stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method);
+                                  std::string method = "sample",
+                                  int seed = 12345) {
+    return enrichit::gsea_adaptive(stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, seed);
 }

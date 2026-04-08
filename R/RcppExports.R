@@ -5,12 +5,12 @@ ora_cpp <- function(gene, universe, gene_sets, gene_set_names) {
     .Call(`_enrichit_ora_cpp`, gene, universe, gene_sets, gene_set_names)
 }
 
-gsea_cpp <- function(stats, gene_sets, gene_set_names, nPerm = 1000L, exponent = 1.0, method = "sample") {
-    .Call(`_enrichit_gsea_cpp`, stats, gene_sets, gene_set_names, nPerm, exponent, method)
+gsea_cpp <- function(stats, gene_sets, gene_set_names, nPerm = 1000L, exponent = 1.0, method = "sample", seed = 12345L) {
+    .Call(`_enrichit_gsea_cpp`, stats, gene_sets, gene_set_names, nPerm, exponent, method, seed)
 }
 
-gsea_adaptive_cpp <- function(stats, gene_sets, gene_set_names, minPerm = 1000L, maxPerm = 100000L, pvalThreshold = 0.1, exponent = 1.0, method = "sample") {
-    .Call(`_enrichit_gsea_adaptive_cpp`, stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method)
+gsea_adaptive_cpp <- function(stats, gene_sets, gene_set_names, minPerm = 1000L, maxPerm = 100000L, pvalThreshold = 0.1, exponent = 1.0, method = "sample", seed = 12345L) {
+    .Call(`_enrichit_gsea_adaptive_cpp`, stats, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, seed)
 }
 
 gsea_multilevel_cpp <- function(geneList, gene_sets, gene_set_names, minPerm, maxPerm, pvalThreshold, exponent, method, eps, sampleSize, seed, nPermSimple = 1000L, scoreType = "std") {

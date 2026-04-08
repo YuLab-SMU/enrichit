@@ -56,20 +56,17 @@ gsea <- function(geneList, gene_sets,
                  scoreType = "std",
                  verbose = TRUE) {
     
-    # Validate inputs
-    if (!is.numeric(geneList) || is.null(names(geneList))) {
-        stop("geneList must be a named numeric vector")
-    }
-    
     gene_sets <- validate_gene_sets(gene_sets)
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
     scoreType <- match.arg(scoreType, c("std", "pos", "neg"))
-    
-    # Ensure geneList is sorted
-    if (is.unsorted(rev(geneList))) {
-        warning("geneList is not sorted in descending order. Sorting it now.")
-        geneList <- sort(geneList, decreasing = TRUE)
+
+    prepared <- prepare_gsea_inputs(geneList, scoreType, exponent)
+    geneList <- prepared$geneList
+    multilevelRanks <- prepared$multilevelRanks
+    sampleSize <- normalize_multilevel_sample_size(sampleSize)
+    if (isFALSE(seed)) {
+        seed <- sample.int(1e9, 1)
     }
     
     # Filter by size
@@ -88,18 +85,15 @@ gsea <- function(geneList, gene_sets,
     
     # Call appropriate C++ function
     if (method == "multilevel") {
-        if (isFALSE(seed)) {
-            seed <- sample.int(1e9, 1)
-        }
-        result <- gsea_multilevel_cpp(geneList = geneList, gene_sets = gene_sets, gene_set_names = gene_set_names,
+        result <- gsea_multilevel_cpp(geneList = multilevelRanks, gene_sets = gene_sets, gene_set_names = gene_set_names,
                                  minPerm = minPerm, maxPerm = maxPerm, pvalThreshold = pvalThreshold,
-                                 exponent = exponent, method = method, eps = eps, sampleSize = sampleSize, seed = seed,
+                                 exponent = 1.0, method = method, eps = eps, sampleSize = sampleSize, seed = seed,
                                  nPermSimple = nPermSimple, scoreType = scoreType)
     } else if (adaptive) {
         result <- gsea_adaptive_cpp(geneList, gene_sets, gene_set_names, 
-                                    minPerm, maxPerm, pvalThreshold, exponent, method)
+                                    minPerm, maxPerm, pvalThreshold, exponent, method, seed)
     } else {
-        result <- gsea_cpp(geneList, gene_sets, gene_set_names, nPerm, exponent, method)
+        result <- gsea_cpp(geneList, gene_sets, gene_set_names, nPerm, exponent, method, seed)
     }
     
     # Rename columns to standard names
@@ -149,8 +143,69 @@ gsea <- function(geneList, gene_sets,
              result <- result[order(result$pvalue, decreasing = FALSE), ]
         }
     }
+
+    if (method == "multilevel" && any(is.na(result$pvalue))) {
+        warning(
+            "There were ", sum(is.na(result$pvalue)),
+            " pathways for which P-values were not calculated properly due to unbalanced gene-level statistic values. ",
+            "For such pathways pvalue, NES and log2err are set to NA. You can try to increase nPermSimple."
+        )
+    }
+    if (method == "multilevel" && any(!is.na(result$pvalue) & result$pvalue == eps & is.na(result$log2err))) {
+        warning(
+            "For some pathways, in reality P-values are less than ", eps,
+            ". You can set the eps argument to zero for better estimation."
+        )
+    }
     
     return(result)
+}
+
+normalize_multilevel_sample_size <- function(sampleSize) {
+    sampleSize <- as.integer(sampleSize[[1]])
+    if (!is.finite(sampleSize)) {
+        stop("sampleSize must be a finite integer")
+    }
+    sampleSize <- max(sampleSize, 3L)
+    if (sampleSize %% 2L == 0L) {
+        sampleSize <- sampleSize + 1L
+    }
+    sampleSize
+}
+
+prepare_gsea_inputs <- function(geneList, scoreType, exponent) {
+    if (!is.numeric(geneList) || is.null(names(geneList))) {
+        stop("geneList must be a named numeric vector")
+    }
+    if (any(!is.finite(geneList))) {
+        stop("Not all stats values are finite numbers")
+    }
+    if (is.unsorted(rev(geneList))) {
+        warning("geneList is not sorted in descending order. Sorting it now.")
+        geneList <- sort(geneList, decreasing = TRUE)
+    }
+
+    ties <- sum(duplicated(geneList[geneList != 0]))
+    if (ties != 0) {
+        warning(
+            "There are ties in the preranked stats (",
+            round(ties * 100 / length(geneList), digits = 2),
+            "% of the list). The order of those tied genes will be arbitrary, which may produce unexpected results."
+        )
+    }
+    if (all(geneList > 0) && scoreType == "std") {
+        warning(
+            "All values in the stats vector are greater than zero and scoreType is \"std\", maybe you should switch to scoreType = \"pos\"."
+        )
+    }
+
+    multilevelRanks <- abs(geneList)^exponent
+    multilevelRanks <- structure(multilevelRanks * 1000000, names = names(geneList))
+
+    list(
+        geneList = geneList,
+        multilevelRanks = multilevelRanks
+    )
 }
 
 
@@ -268,9 +323,8 @@ gsea_gson <- function(geneList,
         gsea_res$qvalue <- gsea_res$qvalues
     }
 
-    # other_cols <- setdiff(names(gsea_res), expected_cols)
-    # gsea_res <- gsea_res[, c(expected_cols, other_cols)]
-    gsea_res <- gsea_res[, expected_cols]
+    other_cols <- setdiff(names(gsea_res), expected_cols)
+    gsea_res <- gsea_res[, c(expected_cols, other_cols)]
     
     # Set row names
     # Ensure IDs are robust (handle NA and duplicates)

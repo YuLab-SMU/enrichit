@@ -9,3 +9,4 @@ simple_benchmark.R
 .claude
 src/symbols.rds
 .dev
+^analysis$
