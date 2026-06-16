@@ -1,6 +1,6 @@
 Package: enrichit
 Title: 'C++' Implementations of Functional Enrichment Analysis
-Version: 0.1.4
+Version: 0.1.5
 Authors@R: person(given = "Guangchuang", family = "Yu",
                email = "guangchuangyu@gmail.com", role  = c("aut", "cre"))
 Maintainer: Guangchuang Yu <guangchuangyu@gmail.com>
@@ -28,4 +28,4 @@ Suggests:
 Encoding: UTF-8
 VignetteBuilder: quarto
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.0.0

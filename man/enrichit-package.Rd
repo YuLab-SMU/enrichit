@@ -11,5 +11,10 @@ Fast implementations of functional enrichment analysis methods using 'C++' via '
 \author{
 \strong{Maintainer}: Guangchuang Yu \email{guangchuangyu@gmail.com}
 
+Authors:
+\itemize{
+  \item Guangchuang Yu \email{guangchuangyu@gmail.com}
+}
+
 }
 \keyword{internal}

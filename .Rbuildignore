@@ -10,3 +10,4 @@ simple_benchmark.R
 src/symbols.rds
 .dev
 ^analysis$
+bayes_enrich_method.md

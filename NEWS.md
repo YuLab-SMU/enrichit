@@ -1,3 +1,11 @@
+# enrichit 0.1.5
+
++ add Bayesian term selection for ORA results (2026-06-16, Tue)
+    - add `bayes_enrich()` for estimating posterior probabilities of active explanatory terms from `enrichResult` objects
+    - add `bayes_summary()` to return Bayesian enrichment results ordered by posterior probability
+    - support candidate term spaces from top ranked result rows, significant `as.data.frame()` rows, all `x@result` rows, or explicit term IDs
+    - keep the output as an `enrichResult` object with posterior, posterior odds, Bayesian rank, active flag, and covered-gene columns
+
 # enrichit 0.1.4
 
 + fix GSON helper functions (2026-04-06, Mon)
