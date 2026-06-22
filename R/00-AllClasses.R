@@ -4,8 +4,7 @@
 #'
 #'
 #' @name compareClusterResult-class
-#' @aliases compareClusterResult-class show,compareClusterResult-method
-#'   summary,compareClusterResult-method plot,compareClusterResult-method
+#' @aliases compareClusterResult-class show,compareClusterResult-method summary,compareClusterResult-method plot,compareClusterResult-method
 #' @docType class
 #' @slot compareClusterResult cluster comparing result
 #' @slot geneClusters a list of genes
@@ -45,8 +44,7 @@ setClass("compareClusterResult",
 #'
 #'
 #' @name enrichResult-class
-#' @aliases enrichResult-class
-#'   show,enrichResult-method summary,enrichResult-method
+#' @aliases enrichResult-class show,enrichResult-method summary,enrichResult-method
 #'
 #' @docType class
 #' @slot result enrichment analysis
@@ -95,8 +93,7 @@ setClass("enrichResult",
 #'
 #'
 #' @name gseaResult-class
-#' @aliases gseahResult-class
-#'   show,gseaResult-method summary,gseaResult-method
+#' @aliases gseahResult-class show,gseaResult-method summary,gseaResult-method
 #'
 #' @docType class
 #' @slot result GSEA anaysis

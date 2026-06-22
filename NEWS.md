@@ -1,3 +1,12 @@
+# enrichit 0.1.5.002
+
++ align multilevel GSEA rank scaling with `fgsea::prepareStats()` to reduce result drift relative to the long-used fgsea backend (2026-06-22, Mon)
+    - replace the fixed `* 1e6` scaling in `prepare_gsea_inputs()` with fgsea-style total-weight normalization and integer rounding
+    - add a regression test that compares `gsea(method = "multilevel")` against `fgsea::fgseaMultilevel()` on the same ranked input
++ exclude zero-overlap gene sets from `ora_gson()` before multiple-testing correction (2026-06-22, Mon)
+    - keep `Count = 0` rows out of `p.adjust`/`qvalue` so ORA results match historical `DOSE`/`clusterProfiler` behavior
+    - resolves inflated adjustment in downstream `clusterProfiler::enricher()`, `enrichKEGG()`, and `compareCluster()` workflows (e.g. compound KEGG analyses, #821 & #819 of 'clusterProfiler')
+
 # enrichit 0.1.5
 
 + add Bayesian term selection for ORA results (2026-06-16, Tue)

@@ -199,13 +199,28 @@ prepare_gsea_inputs <- function(geneList, scoreType, exponent) {
         )
     }
 
-    multilevelRanks <- abs(geneList)^exponent
-    multilevelRanks <- structure(multilevelRanks * 1000000, names = names(geneList))
+    multilevelRanks <- scale_fgsea_ranks(geneList, exponent)
 
     list(
         geneList = geneList,
         multilevelRanks = multilevelRanks
     )
+}
+
+scale_fgsea_ranks <- function(geneList, exponent) {
+    ranks <- abs(geneList)^exponent
+
+    # Mirror fgsea::prepareStats(): scale to integer-like values based on the
+    # total weight rather than a fixed multiplier, which keeps the multilevel
+    # backend numerically closer to the long-used fgsea implementation.
+    scaleCoeff <- 2^30 / sum(ranks)
+    if (scaleCoeff >= 1) {
+        scaleCoeff <- floor(scaleCoeff)
+    }
+
+    ranks <- round(ranks * scaleCoeff)
+    storage.mode(ranks) <- "integer"
+    structure(ranks, names = names(geneList))
 }
 
 

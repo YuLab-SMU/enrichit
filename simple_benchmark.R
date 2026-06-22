@@ -1,8 +1,116 @@
-# Simplified benchmark to understand p-value differences
+# Benchmark script to separate backend drift from Monte Carlo variance
 library(fgsea)
 library(DOSE)
-# library(enrichit)
 devtools::load_all(".")
+
+DEFAULT_CFG <- list(
+  label = "default",
+  sampleSize = 101L,
+  nPermSimple = 1000L,
+  eps = 1e-50
+)
+
+PRECISE_CFG <- list(
+  label = "precise",
+  sampleSize = 501L,
+  nPermSimple = 10000L,
+  eps = 1e-50
+)
+
+BENCHMARK_SEEDS <- c(1L, 2L)
+SUBSET_SEED <- 123L
+N_PATHWAYS <- 100L
+MIN_SIZE <- 15L
+MAX_SIZE <- 500L
+
+summarize_pair <- function(a, b) {
+  stopifnot(length(a) == length(b))
+  data.frame(
+    n = length(a),
+    mae = mean(abs(a - b)),
+    mae_log10 = mean(abs(log10(a) - log10(b))),
+    max_log10 = max(abs(log10(a) - log10(b))),
+    spearman = cor(a, b, method = "spearman")
+  )
+}
+
+compare_results <- function(lhs, rhs, lhs_name, rhs_name) {
+  lhs_ids <- lhs$ID
+  rhs_ids <- rhs$ID
+  common <- intersect(lhs_ids, rhs_ids)
+
+  lhs_sub <- lhs[match(common, lhs_ids), , drop = FALSE]
+  rhs_sub <- rhs[match(common, rhs_ids), , drop = FALSE]
+
+  data.frame(
+    ID = common,
+    lhs_p = lhs_sub$pvalue,
+    rhs_p = rhs_sub$pvalue,
+    lhs_es = lhs_sub$enrichmentScore,
+    rhs_es = rhs_sub$enrichmentScore,
+    ABS_DIFF = abs(lhs_sub$pvalue - rhs_sub$pvalue),
+    LOG10_DIFF = abs(log10(lhs_sub$pvalue) - log10(rhs_sub$pvalue)),
+    RATIO = lhs_sub$pvalue / rhs_sub$pvalue,
+    lhs = lhs_name,
+    rhs = rhs_name
+  )
+}
+
+to_enrichit_like <- function(fgsea_res) {
+  data.frame(
+    ID = as.character(fgsea_res$pathway),
+    pvalue = as.numeric(fgsea_res$pval),
+    enrichmentScore = as.numeric(fgsea_res$ES),
+    NES = as.numeric(fgsea_res$NES),
+    stringsAsFactors = FALSE
+  )
+}
+
+run_fgsea <- function(pathways_subset, stats, seed, cfg) {
+  set.seed(seed)
+  start_time <- Sys.time()
+  res <- fgseaMultilevel(
+    pathways_subset,
+    stats,
+    minSize = MIN_SIZE,
+    maxSize = MAX_SIZE,
+    eps = cfg$eps,
+    sampleSize = cfg$sampleSize,
+    nPermSimple = cfg$nPermSimple
+  )
+  elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+  list(result = to_enrichit_like(as.data.frame(res)), time = elapsed)
+}
+
+run_enrichit <- function(pathways_subset, stats, seed, cfg) {
+  start_time <- Sys.time()
+  res <- gsea(
+    stats,
+    pathways_subset,
+    method = "multilevel",
+    minGSSize = MIN_SIZE,
+    maxGSSize = MAX_SIZE,
+    pvalThreshold = 1.0,
+    eps = cfg$eps,
+    sampleSize = cfg$sampleSize,
+    nPermSimple = cfg$nPermSimple,
+    seed = seed
+  )
+  elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+  list(result = res, time = elapsed)
+}
+
+print_comparison <- function(df, title) {
+  cat("\n", title, "\n", sep = "")
+  cat("Top 10 largest absolute differences:\n")
+  print(head(df[order(df$ABS_DIFF, decreasing = TRUE), ], 10))
+  cat("\nTop 10 largest log10 differences:\n")
+  print(head(df[order(df$LOG10_DIFF, decreasing = TRUE), ], 10))
+  cat("\nP-value ratio summary (lhs/rhs):\n")
+  print(summary(df$RATIO))
+  cat("\nGeometric mean of p-value ratio:", exp(mean(log(df$RATIO))), "\n")
+  cat("Median p-value ratio:", median(df$RATIO), "\n")
+}
 
 # Load the same data as in benchmark_vs_fgsea.R
 data(geneList, package = "DOSE")
@@ -15,115 +123,46 @@ print(tail(stats))
 x <- DOSE:::get_dose_data("HDO")
 pathways <- split(x@gsid2gene$gene, x@gsid2gene$gsid)
 
-# Run on a subset for faster testing
-set.seed(123)
-subset_idx <- sample(length(pathways), min(100, length(pathways)))
+set.seed(SUBSET_SEED)
+subset_idx <- sample(length(pathways), min(N_PATHWAYS, length(pathways)))
 pathways_subset <- pathways[subset_idx]
 
 cat("Running on", length(pathways_subset), "pathways\n")
+cat("Seeds:", paste(BENCHMARK_SEEDS, collapse = ", "), "\n")
 
-# Run fgsea
-cat("Running fgseaMultilevel...\n")
-start_time_fgsea <- Sys.time()
-fgsea_res <- fgseaMultilevel(pathways_subset, stats, minSize=15, maxSize=500, eps=1e-50, sampleSize=101)
-end_time_fgsea <- Sys.time()
-time_fgsea <- as.numeric(difftime(end_time_fgsea, start_time_fgsea, units = "secs"))
-cat("fgsea time:", round(time_fgsea, 4), "seconds\n")
+run_suite <- function(cfg) {
+  cat("\n=== Configuration:", cfg$label, "===\n")
+  cat("sampleSize =", cfg$sampleSize, "; nPermSimple =", cfg$nPermSimple, "; eps =", cfg$eps, "\n")
 
-# Run enrichit
-cat("Running enrichit gsea (multilevel)...\n")
-start_time_enrichit <- Sys.time()
-enrichit_res <- gsea(stats, pathways_subset, method = "multilevel", minPerm = 101,
-                     minGSSize=15, maxGSSize=500, pvalThreshold = 1.0, eps = 1e-50)
-end_time_enrichit <- Sys.time()
-time_enrichit <- as.numeric(difftime(end_time_enrichit, start_time_enrichit, units = "secs"))
-cat("enrichit time:", round(time_enrichit, 4), "seconds\n")
+  fgsea_runs <- lapply(BENCHMARK_SEEDS, function(seed) run_fgsea(pathways_subset, stats, seed, cfg))
+  enrichit_runs <- lapply(BENCHMARK_SEEDS, function(seed) run_enrichit(pathways_subset, stats, seed, cfg))
 
-# Match by pathway name
-common <- intersect(fgsea_res$pathway, enrichit_res$ID)
-fgsea_sub <- fgsea_res[match(common, fgsea_res$pathway), ]
-enrichit_sub <- enrichit_res[match(common, enrichit_res$ID), ]
+  fgsea_ref <- fgsea_runs[[1]]$result
+  enrichit_ref <- enrichit_runs[[1]]$result
 
-pval_fgsea <- fgsea_sub$pval
-pval_enrichit <- enrichit_sub$pvalue
+  fgsea_vs_enrichit <- compare_results(fgsea_ref, enrichit_ref, "fgsea", "enrichit")
+  fgsea_vs_fgsea <- compare_results(fgsea_ref, fgsea_runs[[2]]$result, "fgsea(seed1)", "fgsea(seed2)")
+  enrichit_vs_enrichit <- compare_results(enrichit_ref, enrichit_runs[[2]]$result, "enrichit(seed1)", "enrichit(seed2)")
 
-es_fgsea <- fgsea_sub$ES
-es_enrichit <- enrichit_sub$enrichmentScore
+  cat("\nTime comparison:\n")
+  cat("  fgsea seed1:   ", round(fgsea_runs[[1]]$time, 4), "s\n")
+  cat("  fgsea seed2:   ", round(fgsea_runs[[2]]$time, 4), "s\n")
+  cat("  enrichit seed1:", round(enrichit_runs[[1]]$time, 4), "s\n")
+  cat("  enrichit seed2:", round(enrichit_runs[[2]]$time, 4), "s\n")
+  cat("  Ratio (enrichit/fgsea, seed1):", round(enrichit_runs[[1]]$time / fgsea_runs[[1]]$time, 2), "x\n")
 
-# Calculate statistics
-cor_pval <- cor(pval_fgsea, pval_enrichit, method = "spearman")
-cor_es <- cor(es_fgsea, es_enrichit, method = "pearson")
-mae <- mean(abs(pval_fgsea - pval_enrichit))
-rmse <- sqrt(mean((pval_fgsea - pval_enrichit)^2))
-mae_log <- mean(abs(log10(pval_fgsea + 1e-300) - log10(pval_enrichit + 1e-300)))
+  summary_table <- rbind(
+    fgsea_vs_enrichit = summarize_pair(fgsea_vs_enrichit$lhs_p, fgsea_vs_enrichit$rhs_p),
+    fgsea_vs_fgsea = summarize_pair(fgsea_vs_fgsea$lhs_p, fgsea_vs_fgsea$rhs_p),
+    enrichit_vs_enrichit = summarize_pair(enrichit_vs_enrichit$lhs_p, enrichit_vs_enrichit$rhs_p)
+  )
+  print(summary_table)
 
-cat("\n=== Results ===\n")
-cat("Time comparison:\n")
-cat("  fgsea:   ", round(time_fgsea, 4), "s\n")
-cat("  enrichit:", round(time_enrichit, 4), "s\n")
-cat("  Ratio (enrichit/fgsea):", round(time_enrichit/time_fgsea, 2), "x\n")
-cat("Correlation (Spearman) P-values:", round(cor_pval, 6), "\n")
-cat("Correlation (Pearson) ES:", round(cor_es, 6), "\n")
-cat("MAE:", signif(mae, 6), "; RMSE:", signif(rmse, 6), "\n")
-cat("MAE on log10 scale:", round(mae_log, 6), "\n")
+  cat("\nES correlation (fgsea vs enrichit, seed1):", round(cor(fgsea_vs_enrichit$lhs_es, fgsea_vs_enrichit$rhs_es), 6), "\n")
+  cat("If `fgsea vs enrichit` is not worse than `fgsea vs fgsea`, most visible drift is Monte Carlo noise, not backend bias.\n")
 
-# Check which gives smaller p-values
-enrichit_smaller <- sum(pval_enrichit < pval_fgsea)
-fgsea_smaller <- sum(pval_fgsea < pval_enrichit)
-equal <- sum(abs(pval_fgsea - pval_enrichit) < 1e-10)
-
-cat("\nP-value comparison:\n")
-cat("enrichit gives smaller p-values for", enrichit_smaller, "out of", length(common), "pathways\n")
-cat("fgsea gives smaller p-values for", fgsea_smaller, "out of", length(common), "pathways\n")
-cat("Equal p-values for", equal, "pathways\n")
-
-# Look at largest differences
-df <- data.frame(ID = common, 
-                 FGSEA_P = pval_fgsea, ENRICHIT_P = pval_enrichit,
-                 FGSEA_ES = es_fgsea, ENRICHIT_ES = es_enrichit,
-                 ABS_DIFF = abs(pval_fgsea - pval_enrichit),
-                 LOG10_DIFF = abs(log10(pval_fgsea + 1e-300) - log10(pval_enrichit + 1e-300)),
-                 RATIO = pval_enrichit / pval_fgsea)
-
-cat("\nTop 10 largest absolute differences:\n")
-print(head(df[order(df$ABS_DIFF, decreasing = TRUE), ], 10))
-
-cat("\nTop 10 largest log10 differences:\n")
-print(head(df[order(df$LOG10_DIFF, decreasing = TRUE), ], 10))
-
-cat("\nP-value ratio summary (enrichit/fgsea):\n")
-print(summary(df$RATIO))
-
-# Check if enrichit consistently gives smaller p-values
-cat("\nGeometric mean of p-value ratio:", exp(mean(log(df$RATIO))), "\n")
-cat("Median p-value ratio:", median(df$RATIO), "\n")
-
-# Plot if possible
-if (requireNamespace("ggplot2", quietly = TRUE)) {
-  library(ggplot2)
-
-  # Log-log plot
-  df$log10_fgsea <- log10(df$FGSEA_P + 1e-300)
-  df$log10_enrichit <- log10(df$ENRICHIT_P + 1e-300)
-
-  p <- ggplot(df, aes(x = log10_fgsea, y = log10_enrichit)) +
-    geom_point(alpha = 0.6) +
-    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
-    ggtitle("P-value comparison: enrichit vs fgsea (log10 scale)") +
-    xlab("log10(fgsea p-value)") +
-    ylab("log10(enrichit p-value)") +
-    theme_minimal()
-
-  print(p)
-
-  # Ratio distribution
-  p2 <- ggplot(df, aes(x = RATIO)) +
-    geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
-    geom_vline(xintercept = 1, color = "red", linetype = "dashed") +
-    scale_x_log10() +
-    ggtitle("Distribution of p-value ratio (enrichit/fgsea)") +
-    xlab("enrichit p-value / fgsea p-value (log10 scale)") +
-    theme_minimal()
-
-  print(p2)
+  print_comparison(fgsea_vs_enrichit, "fgsea vs enrichit (same seed)")
 }
+
+run_suite(DEFAULT_CFG)
+run_suite(PRECISE_CFG)

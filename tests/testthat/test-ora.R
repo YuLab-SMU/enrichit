@@ -46,3 +46,47 @@ test_that("ORA function returns correct p-values and format", {
   expect_true(all(c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5") %in% genes_in_id))
   expect_equal(length(genes_in_id), 5)
 })
+
+test_that("ora_gson excludes zero-overlap sets from multiple testing correction", {
+  gsid2gene <- data.frame(
+    gsid = c("set1", "set1", "set2", "set2", "set3", "set3"),
+    gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4", "Gene5"),
+    stringsAsFactors = FALSE
+  )
+  gsid2name <- data.frame(
+    gsid = c("set1", "set2", "set3"),
+    name = c("Set 1", "Set 2", "Set 3"),
+    stringsAsFactors = FALSE
+  )
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = gsid2name,
+    species = "test",
+    gsname = "test",
+    version = "test",
+    accessed_date = as.character(Sys.Date()),
+    keytype = "UNKNOWN"
+  )
+
+  res <- ora_gson(
+    gene = c("Gene1", "Gene2"),
+    pvalueCutoff = 1,
+    pAdjustMethod = "BH",
+    universe = c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5"),
+    minGSSize = 1,
+    maxGSSize = 10,
+    qvalueCutoff = 1,
+    gson = gson_obj
+  )
+
+  expect_s4_class(res, "enrichResult")
+  expect_equal(res@result$ID, c("set1", "set2"))
+  expect_true(all(res@result$Count > 0))
+
+  raw_p <- c(
+    expected_pvalue(set_size = 2, overlap = 2, de_total = 2, universe_size = 5),
+    expected_pvalue(set_size = 2, overlap = 1, de_total = 2, universe_size = 5)
+  )
+  expect_equal(res@result$pvalue, raw_p, tolerance = 1e-10)
+  expect_equal(res@result$p.adjust, p.adjust(raw_p, method = "BH"), tolerance = 1e-10)
+})

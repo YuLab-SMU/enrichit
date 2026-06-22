@@ -87,6 +87,18 @@ ora_gson <- function(gene,
     if ("DEInSet" %in% names(ora_res)) {
         names(ora_res)[names(ora_res) == "DEInSet"] <- "Count"
     }
+
+    # Only gene sets with at least one matched input gene should contribute to
+    # multiple testing correction. Keeping zero-overlap rows here inflates the
+    # number of hypotheses and shifts adjusted statistics relative to the
+    # historical DOSE/clusterProfiler behavior.
+    if ("Count" %in% names(ora_res)) {
+        ora_res <- ora_res[ora_res$Count > 0, , drop = FALSE]
+    }
+
+    if (nrow(ora_res) == 0) {
+        return(NULL)
+    }
     
     # Calculate ratios
     if (all(c("Count", "DESize") %in% names(ora_res))) {

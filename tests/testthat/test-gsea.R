@@ -123,3 +123,56 @@ test_that("Multilevel GSEA works correctly with new parameters", {
                      nPermSimple = 500))
   expect_true(is.data.frame(res_simple))
 })
+
+test_that("Multilevel GSEA stays close to fgsea reference results", {
+  skip_if_not_installed("fgsea")
+
+  set.seed(1)
+  stats <- rnorm(2000)
+  names(stats) <- paste0("Gene", seq_along(stats))
+  stats <- sort(stats, decreasing = TRUE)
+
+  gene_sets <- list(
+    Top = c(names(stats)[1:20], names(stats)[sample(100:2000, 20)]),
+    Bottom = c(names(stats)[1981:2000], names(stats)[sample(1:1900, 20)]),
+    Mixed = sample(names(stats), 40)
+  )
+
+  enrichit_res <- suppressWarnings(
+    gsea(
+      geneList = stats,
+      gene_sets = gene_sets,
+      method = "multilevel",
+      eps = 0,
+      sampleSize = 101,
+      nPermSimple = 1000,
+      scoreType = "std"
+    )
+  )
+  fgsea_res <- suppressWarnings(
+    fgsea::fgseaMultilevel(
+      pathways = gene_sets,
+      stats = stats,
+      eps = 0,
+      sampleSize = 101,
+      nPermSimple = 1000,
+      scoreType = "std",
+      gseaParam = 1,
+      minSize = 10,
+      maxSize = 500
+    )
+  )
+  fgsea_res <- as.data.frame(fgsea_res)
+
+  cmp <- merge(
+    enrichit_res[, c("ID", "enrichmentScore", "NES", "pvalue")],
+    fgsea_res[, c("pathway", "ES", "NES", "pval")],
+    by.x = "ID",
+    by.y = "pathway",
+    sort = FALSE
+  )
+
+  expect_equal(cmp$enrichmentScore, cmp$ES, tolerance = 1e-6)
+  expect_equal(cmp$NES.x, cmp$NES.y, tolerance = 0.08)
+  expect_equal(log10(cmp$pvalue), log10(cmp$pval), tolerance = 1)
+})
