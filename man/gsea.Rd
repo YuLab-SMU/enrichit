@@ -7,6 +7,7 @@
 gsea(
   geneList,
   gene_sets,
+  weight = NULL,
   minGSSize = 10,
   maxGSSize = 500,
   nPerm = 1000,
@@ -28,6 +29,8 @@ gsea(
 \item{geneList}{A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.}
 
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
+
+\item{weight}{A named numeric vector of weights for genes. The names should match the names of geneList. If provided, the geneList will be multiplied by the weight and resorted before GSEA (default: NULL).}
 
 \item{minGSSize}{minimal size of each geneSet for analyzing}
 

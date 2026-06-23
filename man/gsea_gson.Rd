@@ -7,6 +7,7 @@
 gsea_gson(
   geneList,
   gson,
+  weight = NULL,
   nPerm = 1000,
   exponent = 1,
   minGSSize = 10,
@@ -26,6 +27,8 @@ gsea_gson(
 \item{geneList}{A named numeric vector of gene statistics (e.g., log fold change), ranked in descending order.}
 
 \item{gson}{A GSON object containing gene set information.}
+
+\item{weight}{A named numeric vector of weights for genes.}
 
 \item{nPerm}{Number of permutations for p-value calculation (default: 1000).}
 

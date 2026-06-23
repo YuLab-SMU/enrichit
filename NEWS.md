@@ -1,5 +1,9 @@
 # enrichit 0.1.6
 
++ implement Weighted Enrichment Analysis (2026-06-23, Tue)
+    - add `weight` parameter to `ora()`, `ora_gson()`, `gsea()`, and `gsea_gson()`
+    - support Weighted ORA using Wallenius' noncentral hypergeometric distribution via the `BiasedUrn` package
+    - support Weighted GSEA by fusing external weights with ranked statistics
 + implement Network-based Set Enrichment Analysis (NSEA) (2026-06-23, Tue)
     - add `nsea()` and `nsea_gson()` for network-ranked GSEA based on Random Walk with Restart (RWR)
     - add `prepare_network()` for parsing and normalizing edge lists or sparse matrices

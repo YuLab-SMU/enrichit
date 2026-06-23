@@ -4,7 +4,7 @@
 \alias{ora}
 \title{Over-Representation Analysis (ORA)}
 \usage{
-ora(gene, gene_sets, universe)
+ora(gene, gene_sets, universe, weight = NULL)
 }
 \arguments{
 \item{gene}{Character vector of differentially expressed genes (or gene list of interest).}
@@ -12,6 +12,8 @@ ora(gene, gene_sets, universe)
 \item{gene_sets}{A named list of gene sets. Each element is a character vector of genes.}
 
 \item{universe}{Character vector of background genes (e.g., all genes in the platform).}
+
+\item{weight}{A named numeric vector of weights for background genes. If provided, Weighted ORA will be performed using Wallenius' noncentral hypergeometric distribution (requires 'BiasedUrn' package). The names should match the universe genes.}
 }
 \value{
 A data.frame with columns:

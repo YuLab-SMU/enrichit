@@ -9,6 +9,7 @@ ora_gson(
   pvalueCutoff,
   pAdjustMethod = "BH",
   universe = NULL,
+  weight = NULL,
   minGSSize = 10,
   maxGSSize = 500,
   qvalueCutoff = 0.2,
@@ -24,6 +25,8 @@ ora_gson(
 
 \item{universe}{background genes, default is the intersection of the 'universe' with genes that have annotations.
 Users can set \code{options(enrichment_force_universe = TRUE)} to force the 'universe' untouched.}
+
+\item{weight}{A named numeric vector of weights for background genes. If provided, Weighted ORA will be performed.}
 
 \item{minGSSize}{minimal size of each geneSet for analyzing}
 
