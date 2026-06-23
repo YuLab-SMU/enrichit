@@ -169,7 +169,13 @@ nsea <- function(geneList,
                     ...)
     }
     
-    return(res)
+    res_nsea <- new("nseaResult",
+                    res,
+                    network = network,
+                    diffusion_scores = rwr_scores,
+                    mode = mode)
+    
+    return(res_nsea)
 }
 
 #' Network-based GSEA using a GSON object
@@ -276,5 +282,11 @@ nsea_gson <- function(geneList,
                          ...)
     }
     
-    return(res)
+    res_nsea <- new("nseaResult",
+                    res,
+                    network = network,
+                    diffusion_scores = rwr_scores,
+                    mode = mode)
+    
+    return(res_nsea)
 }

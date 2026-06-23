@@ -1,6 +1,7 @@
 # enrichit 0.1.6
 
 + add `aggregate_omics()`, `harmonize_ids()` and `select_features_for_ora()` to support Multi-omics Early Integration
+    - add `conflict_policy` parameter ("keep_all", "strict", "penalty") to handle directional conflicts in signed statistics (2026-06-23, Tue)
 + add `get_omics_contribution()` and `classify_omics_pattern()` for Multi-omics contribution tracing
 + implement Weighted Enrichment Analysis (2026-06-23, Tue)
     - add `weight` parameter to `ora()`, `ora_gson()`, `gsea()`, and `gsea_gson()`
@@ -8,6 +9,7 @@
     - support Weighted GSEA by fusing external weights with ranked statistics
 + implement Network-based Set Enrichment Analysis (NSEA) (2026-06-23, Tue)
     - add `nsea()` and `nsea_gson()` for network-ranked GSEA based on Random Walk with Restart (RWR)
+    - add `mode = "signed"` support in `nsea()` and `nsea_gson()` for bidirectional network propagation using signed statistics
     - add `prepare_network()` for parsing and normalizing edge lists or sparse matrices
     - implement extremely fast RWR using `RcppEigen` sparse matrix multiplication
     - introduce zero-dependency integration strategy for network propagation followed by multilevel GSEA

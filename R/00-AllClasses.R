@@ -128,3 +128,27 @@ setClass("gseaResult",
          )
          )
 
+
+#' Class "nseaResult"
+#' This class represents the result of Network-based Set Enrichment Analysis (NSEA).
+#' It inherits from gseaResult and contains additional network-related attributes.
+#'
+#' @name nseaResult-class
+#' @aliases nseaResult-class show,nseaResult-method summary,nseaResult-method
+#'
+#' @docType class
+#' @slot network The input network used for propagation
+#' @slot diffusion_scores The stationary probabilities (or score differences) after RWR
+#' @slot mode The propagation mode used ("evidence" or "signed")
+#' @exportClass nseaResult
+#' @author Guangchuang Yu \url{https://yulab-smu.top}
+#' @keywords classes
+setClass("nseaResult",
+         contains = "gseaResult",
+         representation = representation(
+             network          = "ANY",
+             diffusion_scores = "numeric",
+             mode             = "character"
+         )
+         )
+
