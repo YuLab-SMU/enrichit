@@ -3,6 +3,7 @@
 \docType{methods}
 \name{show}
 \alias{show}
+\alias{show,nseaResult-method}
 \title{show method}
 \usage{
 show(object)

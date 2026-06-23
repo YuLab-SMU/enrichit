@@ -31,6 +31,7 @@ setMethod("show", signature(object="gseaResult"),
 #' show method for `nseaResult` instance
 #'
 #' @name show
+#' @aliases show,nseaResult-method
 #' @docType methods
 #' @rdname show-methods
 #'

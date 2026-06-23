@@ -14,21 +14,19 @@ This class represents the result of Network-based Set Enrichment Analysis (NSEA)
 \describe{
 \item{\code{result}}{enrichment analysis}
 
-\item{\code{pvalueCutoff}}{pvalueCutoff}
+\item{\code{organism}}{organism label for the enrichment result}
 
-\item{\code{pAdjustMethod}}{pvalue adjust method}
-
-\item{\code{qvalueCutoff}}{qvalueCutoff}
-
-\item{\code{organism}}{only "human" supported}
-
-\item{\code{ontology}}{biological ontology}
+\item{\code{setType}}{gene set collection type}
 
 \item{\code{geneSets}}{gene sets}
 
 \item{\code{geneList}}{order rank geneList}
 
 \item{\code{keytype}}{ID type of gene}
+
+\item{\code{permScores}}{permutation score matrix inherited from \code{gseaResult}}
+
+\item{\code{gene2Symbol}}{gene ID to symbol mapping}
 
 \item{\code{readable}}{logical flag of gene ID in symbol or not.}
 
@@ -37,6 +35,8 @@ This class represents the result of Network-based Set Enrichment Analysis (NSEA)
 \item{\code{method}}{Method of termsim.}
 
 \item{\code{params}}{parameters}
+
+\item{\code{dr}}{dimension reduction result}
 
 \item{\code{network}}{sparse matrix or data.frame representing the underlying network.}
 

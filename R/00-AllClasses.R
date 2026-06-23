@@ -136,18 +136,18 @@ setClass("gseaResult",
 #' @aliases nseaResult-class
 #' @docType class
 #' @slot result enrichment analysis
-#' @slot pvalueCutoff pvalueCutoff
-#' @slot pAdjustMethod pvalue adjust method
-#' @slot qvalueCutoff qvalueCutoff
-#' @slot organism only "human" supported
-#' @slot ontology biological ontology
+#' @slot organism organism label for the enrichment result
+#' @slot setType gene set collection type
 #' @slot geneSets gene sets
 #' @slot geneList order rank geneList
 #' @slot keytype ID type of gene
+#' @slot permScores permutation score matrix inherited from `gseaResult`
+#' @slot gene2Symbol gene ID to symbol mapping
 #' @slot readable logical flag of gene ID in symbol or not.
 #' @slot termsim Calculation matrix of termsim.
 #' @slot method Method of termsim.
 #' @slot params parameters
+#' @slot dr dimension reduction result
 #' @slot network sparse matrix or data.frame representing the underlying network.
 #' @slot diffusion_scores numeric vector of RWR diffusion scores for each node.
 #' @slot mode character, "evidence" or "signed", describing the RWR propagation mode.
