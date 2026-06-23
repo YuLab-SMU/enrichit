@@ -62,9 +62,10 @@ prepare_network <- function(network, directed = FALSE, normalize = "column") {
 
 #' Network-based Gene Set Enrichment Analysis
 #'
-#' @param geneList named numeric vector. Must be non-negative evidence scores.
+#' @param geneList named numeric vector. In "evidence" mode, must be non-negative. In "signed" mode, can contain both positive and negative values.
 #' @param network edge list (data.frame) or sparse matrix.
 #' @param gene_sets list of gene sets.
+#' @param mode character, either "evidence" (default) or "signed". If "signed", the network propagation runs separately for positive and negative values.
 #' @param p restart probability for RWR (default is 0.5).
 #' @param minGSSize minimal size of each gene set for analyzing. default here is 10.
 #' @param maxGSSize maximal size of genes annotated for testing. default here is 500.
@@ -73,11 +74,12 @@ prepare_network <- function(network, directed = FALSE, normalize = "column") {
 #' @param verbose logical, print messages.
 #' @param ... other arguments passed to `gsea()`.
 #'
-#' @return A `data.frame` of NSEA results.
+#' @return A `gseaResult` object of NSEA results.
 #' @export
 nsea <- function(geneList,
                  network,
                  gene_sets,
+                 mode = c("evidence", "signed"),
                  p = 0.5,
                  minGSSize = 10,
                  maxGSSize = 500,
@@ -86,57 +88,96 @@ nsea <- function(geneList,
                  verbose = TRUE,
                  ...) {
     
+    mode <- match.arg(mode)
     if (!is.numeric(geneList) || is.null(names(geneList))) {
         stop("geneList must be a named numeric vector")
     }
     
-    if (any(geneList < 0)) {
-        warning("geneList contains negative values. NSEA mode 'evidence' expects non-negative scores. Negative values will be propagated as is, but might violate RWR assumptions.")
+    if (mode == "evidence" && any(geneList < 0)) {
+        warning("geneList contains negative values but mode is 'evidence'. Negative values will be propagated as is, which might violate RWR assumptions. Consider using mode = 'signed'.")
     }
     
     if (verbose) message("Preparing network...")
     A <- prepare_network(network)
-    
     nodes <- rownames(A)
-    v <- rep(0, length(nodes))
-    names(v) <- nodes
     
     common_nodes <- intersect(names(geneList), nodes)
     if (length(common_nodes) == 0) {
         stop("No overlapping genes between geneList and network.")
     }
-    v[common_nodes] <- geneList[common_nodes]
     
-    # Normalize restart vector
-    sum_v <- sum(v)
-    if (sum_v > 0) {
-        v <- v / sum_v
+    if (mode == "evidence") {
+        v <- rep(0, length(nodes))
+        names(v) <- nodes
+        v[common_nodes] <- geneList[common_nodes]
+        
+        sum_v <- sum(v)
+        if (sum_v > 0) {
+            v <- v / sum_v
+        } else {
+            stop("The sum of geneList scores in the network is zero.")
+        }
+        
+        if (verbose) message("Running Random Walk with Restart (RWR)...")
+        rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        names(rwr_scores) <- nodes
+        
     } else {
-        stop("The sum of geneList scores in the network is zero.")
+        # signed mode
+        if (verbose) message("Running Signed RWR (Up and Down separately)...")
+        
+        v_up <- rep(0, length(nodes))
+        names(v_up) <- nodes
+        v_down <- rep(0, length(nodes))
+        names(v_down) <- nodes
+        
+        genes_up <- common_nodes[geneList[common_nodes] > 0]
+        genes_down <- common_nodes[geneList[common_nodes] < 0]
+        
+        v_up[genes_up] <- geneList[genes_up]
+        v_down[genes_down] <- abs(geneList[genes_down])
+        
+        if (sum(v_up) > 0) v_up <- v_up / sum(v_up)
+        if (sum(v_down) > 0) v_down <- v_down / sum(v_down)
+        
+        rwr_up <- rep(0, length(nodes))
+        rwr_down <- rep(0, length(nodes))
+        
+        if (sum(v_up) > 0) rwr_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
+        if (sum(v_down) > 0) rwr_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+        
+        rwr_scores <- rwr_up - rwr_down
+        names(rwr_scores) <- nodes
     }
-    
-    if (verbose) message("Running Random Walk with Restart (RWR)...")
-    rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
-    names(rwr_scores) <- nodes
     
     rwr_scores <- sort(rwr_scores, decreasing = TRUE)
     
     if (verbose) message("Running GSEA...")
-    res <- gsea(geneList = rwr_scores,
-                gene_sets = gene_sets,
-                minGSSize = minGSSize,
-                maxGSSize = maxGSSize,
-                scoreType = "pos",
-                ...)
+    if (mode == "evidence") {
+        res <- gsea(geneList = rwr_scores,
+                    gene_sets = gene_sets,
+                    minGSSize = minGSSize,
+                    maxGSSize = maxGSSize,
+                    scoreType = "pos",
+                    ...)
+    } else {
+        res <- gsea(geneList = rwr_scores,
+                    gene_sets = gene_sets,
+                    minGSSize = minGSSize,
+                    maxGSSize = maxGSSize,
+                    scoreType = "std",
+                    ...)
+    }
     
     return(res)
 }
 
 #' Network-based GSEA using a GSON object
 #'
-#' @param geneList named numeric vector. Must be non-negative evidence scores.
+#' @param geneList named numeric vector. In "evidence" mode, must be non-negative. In "signed" mode, can contain both positive and negative values.
 #' @param network edge list (data.frame) or sparse matrix.
 #' @param gson a GSON object.
+#' @param mode character, either "evidence" (default) or "signed".
 #' @param p restart probability for RWR (default is 0.5).
 #' @param minGSSize minimal size of each gene set for analyzing. default here is 10.
 #' @param maxGSSize maximal size of genes annotated for testing. default here is 500.
@@ -150,6 +191,7 @@ nsea <- function(geneList,
 nsea_gson <- function(geneList,
                       network,
                       gson,
+                      mode = c("evidence", "signed"),
                       p = 0.5,
                       minGSSize = 10,
                       maxGSSize = 500,
@@ -158,43 +200,81 @@ nsea_gson <- function(geneList,
                       verbose = TRUE,
                       ...) {
     
+    mode <- match.arg(mode)
     if (!is.numeric(geneList) || is.null(names(geneList))) {
         stop("geneList must be a named numeric vector")
     }
     
     if (verbose) message("Preparing network...")
     A <- prepare_network(network)
-    
     nodes <- rownames(A)
-    v <- rep(0, length(nodes))
-    names(v) <- nodes
     
     common_nodes <- intersect(names(geneList), nodes)
     if (length(common_nodes) == 0) {
         stop("No overlapping genes between geneList and network.")
     }
-    v[common_nodes] <- geneList[common_nodes]
     
-    sum_v <- sum(v)
-    if (sum_v > 0) {
-        v <- v / sum_v
+    if (mode == "evidence") {
+        v <- rep(0, length(nodes))
+        names(v) <- nodes
+        v[common_nodes] <- geneList[common_nodes]
+        
+        sum_v <- sum(v)
+        if (sum_v > 0) {
+            v <- v / sum_v
+        } else {
+            stop("The sum of geneList scores in the network is zero.")
+        }
+        
+        if (verbose) message("Running Random Walk with Restart (RWR)...")
+        rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        names(rwr_scores) <- nodes
+        
     } else {
-        stop("The sum of geneList scores in the network is zero.")
+        if (verbose) message("Running Signed RWR (Up and Down separately)...")
+        
+        v_up <- rep(0, length(nodes))
+        names(v_up) <- nodes
+        v_down <- rep(0, length(nodes))
+        names(v_down) <- nodes
+        
+        genes_up <- common_nodes[geneList[common_nodes] > 0]
+        genes_down <- common_nodes[geneList[common_nodes] < 0]
+        
+        v_up[genes_up] <- geneList[genes_up]
+        v_down[genes_down] <- abs(geneList[genes_down])
+        
+        if (sum(v_up) > 0) v_up <- v_up / sum(v_up)
+        if (sum(v_down) > 0) v_down <- v_down / sum(v_down)
+        
+        rwr_up <- rep(0, length(nodes))
+        rwr_down <- rep(0, length(nodes))
+        
+        if (sum(v_up) > 0) rwr_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
+        if (sum(v_down) > 0) rwr_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+        
+        rwr_scores <- rwr_up - rwr_down
+        names(rwr_scores) <- nodes
     }
-    
-    if (verbose) message("Running Random Walk with Restart (RWR)...")
-    rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
-    names(rwr_scores) <- nodes
     
     rwr_scores <- sort(rwr_scores, decreasing = TRUE)
     
     if (verbose) message("Running GSEA...")
-    res <- gsea_gson(geneList = rwr_scores,
-                     gson = gson,
-                     minGSSize = minGSSize,
-                     maxGSSize = maxGSSize,
-                     scoreType = "pos",
-                     ...)
+    if (mode == "evidence") {
+        res <- gsea_gson(geneList = rwr_scores,
+                         gson = gson,
+                         minGSSize = minGSSize,
+                         maxGSSize = maxGSSize,
+                         scoreType = "pos",
+                         ...)
+    } else {
+        res <- gsea_gson(geneList = rwr_scores,
+                         gson = gson,
+                         minGSSize = minGSSize,
+                         maxGSSize = maxGSSize,
+                         scoreType = "std",
+                         ...)
+    }
     
     return(res)
 }

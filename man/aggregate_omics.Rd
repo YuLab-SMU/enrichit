@@ -9,6 +9,7 @@ aggregate_omics(
   method = c("fisher", "stouffer", "mean", "max_abs"),
   input = c("pvalue", "signed_score"),
   feature_type = "gene",
+  conflict_policy = c("keep_all", "strict", "penalty"),
   ...
 )
 }
@@ -20,6 +21,8 @@ aggregate_omics(
 \item{input}{Character, input type. One of "pvalue" or "signed_score".}
 
 \item{feature_type}{Character, type of the features (e.g., "gene", "protein"). Default is "gene".}
+
+\item{conflict_policy}{Character, strategy to handle directional conflicts when input is "signed_score". One of "keep_all" (default, ignore conflicts), "strict" (set to NA if any signs conflict), or "penalty" (divide final score by 2 if signs conflict).}
 
 \item{...}{Additional arguments.}
 }

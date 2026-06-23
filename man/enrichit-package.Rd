@@ -6,12 +6,12 @@
 \alias{enrichit-package}
 \title{enrichit: 'C++' Implementations of Functional Enrichment Analysis}
 \description{
-Fast implementations of functional enrichment analysis methods using 'C++' via 'Rcpp'. Currently provides Over-Representation Analysis (ORA), Gene Set Enrichment Analysis (GSEA), Network-based Set Enrichment Analysis (NSEA), and Weighted Enrichment Analysis (supporting both ORA and GSEA). Additional features include Bayesian term selection for ORA results and extremely fast Random Walk with Restart (RWR) utilizing 'RcppEigen'. The multilevel GSEA algorithm is derived from the 'fgsea' package. Methods are described in Subramanian et al. (2005) \doi{10.1073/pnas.0506580102}, Korotkevich et al. (2021) \doi{10.1101/060012}, and Glaab et al. (2012) \doi{10.1093/bioinformatics/bts389}.
+Fast implementations of functional enrichment analysis methods using 'C++' via 'Rcpp'. Currently provides Over-Representation Analysis (ORA), Gene Set Enrichment Analysis (GSEA), Network-based Set Enrichment Analysis (NSEA), Weighted Enrichment Analysis (supporting both ORA and GSEA), and Multi-omics Early Integration. Additional features include Bayesian term selection, Multi-omics contribution tracing, and extremely fast Random Walk with Restart (RWR) utilizing 'RcppEigen'. The multilevel GSEA algorithm is derived from the 'fgsea' package. Methods are described in Subramanian et al. (2005) \doi{10.1073/pnas.0506580102}, Korotkevich et al. (2021) \doi{10.1101/060012}, and Glaab et al. (2012) \doi{10.1093/bioinformatics/bts389}.
 }
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://yulab-smu.top/biomedical-knowledge-mining-book/020-enrichment-algorithms.html}
+  \item \url{https://yulab-smu.top/biomedical-knowledge-mining-book/}
 }
 
 }

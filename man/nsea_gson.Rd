@@ -8,6 +8,7 @@ nsea_gson(
   geneList,
   network,
   gson,
+  mode = c("evidence", "signed"),
   p = 0.5,
   minGSSize = 10,
   maxGSSize = 500,
@@ -18,11 +19,13 @@ nsea_gson(
 )
 }
 \arguments{
-\item{geneList}{named numeric vector. Must be non-negative evidence scores.}
+\item{geneList}{named numeric vector. In "evidence" mode, must be non-negative. In "signed" mode, can contain both positive and negative values.}
 
 \item{network}{edge list (data.frame) or sparse matrix.}
 
 \item{gson}{a GSON object.}
+
+\item{mode}{character, either "evidence" (default) or "signed".}
 
 \item{p}{restart probability for RWR (default is 0.5).}
 

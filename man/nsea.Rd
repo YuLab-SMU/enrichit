@@ -8,6 +8,7 @@ nsea(
   geneList,
   network,
   gene_sets,
+  mode = c("evidence", "signed"),
   p = 0.5,
   minGSSize = 10,
   maxGSSize = 500,
@@ -18,11 +19,13 @@ nsea(
 )
 }
 \arguments{
-\item{geneList}{named numeric vector. Must be non-negative evidence scores.}
+\item{geneList}{named numeric vector. In "evidence" mode, must be non-negative. In "signed" mode, can contain both positive and negative values.}
 
 \item{network}{edge list (data.frame) or sparse matrix.}
 
 \item{gene_sets}{list of gene sets.}
+
+\item{mode}{character, either "evidence" (default) or "signed". If "signed", the network propagation runs separately for positive and negative values.}
 
 \item{p}{restart probability for RWR (default is 0.5).}
 
@@ -39,7 +42,7 @@ nsea(
 \item{...}{other arguments passed to \code{gsea()}.}
 }
 \value{
-A \code{data.frame} of NSEA results.
+A \code{gseaResult} object of NSEA results.
 }
 \description{
 Network-based Gene Set Enrichment Analysis

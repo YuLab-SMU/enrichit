@@ -6,15 +6,18 @@
 #' @param method Character, aggregation method. One of "fisher", "stouffer", "mean", or "max_abs".
 #' @param input Character, input type. One of "pvalue" or "signed_score".
 #' @param feature_type Character, type of the features (e.g., "gene", "protein"). Default is "gene".
+#' @param conflict_policy Character, strategy to handle directional conflicts when input is "signed_score". One of "keep_all" (default, ignore conflicts), "strict" (set to NA if any signs conflict), or "penalty" (divide final score by 2 if signs conflict).
 #' @param ... Additional arguments.
 #'
 #' @return An object of class `omics_aggregated` containing `score`, `pvalue` (if input is "pvalue"), `input_type`, `feature_type`, and `feature_id`.
 #' @export
 #' @importFrom stats pchisq pnorm qnorm
 aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs"), 
-                            input = c("pvalue", "signed_score"), feature_type = "gene", ...) {
+                            input = c("pvalue", "signed_score"), feature_type = "gene", 
+                            conflict_policy = c("keep_all", "strict", "penalty"), ...) {
     method <- match.arg(method)
     input <- match.arg(input)
+    conflict_policy <- match.arg(conflict_policy)
     
     # Convert input to a matrix of features x omics
     if (is.list(x) && !is.data.frame(x)) {
@@ -67,6 +70,13 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
         res$score <- -log10(pmax(agg_p, .Machine$double.xmin))
         
     } else if (input == "signed_score") {
+        
+        has_conflict <- apply(mat, 1, function(s) {
+            s <- s[!is.na(s) & s != 0]
+            if (length(s) <= 1) return(FALSE)
+            return(length(unique(sign(s))) > 1)
+        })
+        
         if (method == "mean") {
             agg_s <- rowMeans(mat, na.rm = TRUE)
         } else if (method == "max_abs") {
@@ -78,6 +88,13 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
         } else {
             stop("For input='signed_score', method must be 'mean' or 'max_abs'")
         }
+        
+        if (conflict_policy == "strict") {
+            agg_s[has_conflict] <- NA_real_
+        } else if (conflict_policy == "penalty") {
+            agg_s[has_conflict] <- agg_s[has_conflict] / 2
+        }
+        
         res$score <- agg_s
     }
     
@@ -91,6 +108,8 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
         res$pvalue <- res$pvalue[valid_idx]
         names(res$pvalue) <- res$feature_id
     }
+    
+    res$original_matrix <- mat[valid_idx, , drop = FALSE]
     
     class(res) <- "omics_aggregated"
     return(res)

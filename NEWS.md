@@ -1,5 +1,7 @@
 # enrichit 0.1.6
 
++ add `aggregate_omics()`, `harmonize_ids()` and `select_features_for_ora()` to support Multi-omics Early Integration
++ add `get_omics_contribution()` and `classify_omics_pattern()` for Multi-omics contribution tracing
 + implement Weighted Enrichment Analysis (2026-06-23, Tue)
     - add `weight` parameter to `ora()`, `ora_gson()`, `gsea()`, and `gsea_gson()`
     - support Weighted ORA using Wallenius' noncentral hypergeometric distribution via the `BiasedUrn` package
