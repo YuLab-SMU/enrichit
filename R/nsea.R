@@ -67,6 +67,7 @@ prepare_network <- function(network, directed = FALSE, normalize = "column") {
 #' @param gene_sets list of gene sets.
 #' @param mode character, either "evidence" (default) or "signed". If "signed", the network propagation runs separately for positive and negative values.
 #' @param p restart probability for RWR (default is 0.5).
+#' @param specific_weight logical, whether to apply gene specificity weighting (TF-IDF style) based on gene frequencies in `gene_sets`. Default is FALSE.
 #' @param minGSSize minimal size of each gene set for analyzing. default here is 10.
 #' @param maxGSSize maximal size of genes annotated for testing. default here is 500.
 #' @param threshold convergence threshold for RWR (default is 1e-9).
@@ -74,13 +75,14 @@ prepare_network <- function(network, directed = FALSE, normalize = "column") {
 #' @param verbose logical, print messages.
 #' @param ... other arguments passed to `gsea()`.
 #'
-#' @return A `gseaResult` object of NSEA results.
+#' @return A `nseaResult` object of NSEA results.
 #' @export
 nsea <- function(geneList,
                  network,
                  gene_sets,
                  mode = c("evidence", "signed"),
                  p = 0.5,
+                 specific_weight = FALSE,
                  minGSSize = 10,
                  maxGSSize = 500,
                  threshold = 1e-9,
@@ -119,8 +121,10 @@ nsea <- function(geneList,
         }
         
         if (verbose) message("Running Random Walk with Restart (RWR)...")
-        rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        rwr_res <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        rwr_scores <- rwr_res$score
         names(rwr_scores) <- nodes
+        iter <- as.integer(rwr_res$iterations)
         
     } else {
         # signed mode
@@ -143,11 +147,34 @@ nsea <- function(geneList,
         rwr_up <- rep(0, length(nodes))
         rwr_down <- rep(0, length(nodes))
         
-        if (sum(v_up) > 0) rwr_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
-        if (sum(v_down) > 0) rwr_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+        iter_up <- 0
+        iter_down <- 0
+        
+        if (sum(v_up) > 0) {
+            r_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
+            rwr_up <- r_up$score
+            iter_up <- r_up$iterations
+        }
+        if (sum(v_down) > 0) {
+            r_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+            rwr_down <- r_down$score
+            iter_down <- r_down$iterations
+        }
         
         rwr_scores <- rwr_up - rwr_down
         names(rwr_scores) <- nodes
+        iter <- as.integer(max(iter_up, iter_down))
+    }
+    
+    if (specific_weight) {
+        if (verbose) message("Applying gene specificity weighting (TF-IDF)...")
+        N <- length(gene_sets)
+        gene_freq <- table(unlist(gene_sets))
+        df_vals <- as.numeric(gene_freq[names(rwr_scores)])
+        df_vals[is.na(df_vals)] <- 1 # Minimum frequency 1
+        w <- log(N / df_vals)
+        w[w < 0] <- 0
+        rwr_scores <- rwr_scores * w
     }
     
     rwr_scores <- sort(rwr_scores, decreasing = TRUE)
@@ -173,7 +200,9 @@ nsea <- function(geneList,
                     res,
                     network = network,
                     diffusion_scores = rwr_scores,
-                    mode = mode)
+                    mode = mode,
+                    iterations = iter,
+                    restart_prob = p)
     
     return(res_nsea)
 }
@@ -185,6 +214,7 @@ nsea <- function(geneList,
 #' @param gson a GSON object.
 #' @param mode character, either "evidence" (default) or "signed".
 #' @param p restart probability for RWR (default is 0.5).
+#' @param specific_weight logical, whether to apply gene specificity weighting (TF-IDF style) based on gene frequencies in the GSON object. Default is FALSE.
 #' @param minGSSize minimal size of each gene set for analyzing. default here is 10.
 #' @param maxGSSize maximal size of genes annotated for testing. default here is 500.
 #' @param threshold convergence threshold for RWR (default is 1e-9).
@@ -192,13 +222,14 @@ nsea <- function(geneList,
 #' @param verbose logical, print messages.
 #' @param ... other arguments passed to `gsea_gson()`.
 #'
-#' @return A `gseaResult` object.
+#' @return A `nseaResult` object.
 #' @export
 nsea_gson <- function(geneList,
                       network,
                       gson,
                       mode = c("evidence", "signed"),
                       p = 0.5,
+                      specific_weight = FALSE,
                       minGSSize = 10,
                       maxGSSize = 500,
                       threshold = 1e-9,
@@ -233,8 +264,10 @@ nsea_gson <- function(geneList,
         }
         
         if (verbose) message("Running Random Walk with Restart (RWR)...")
-        rwr_scores <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        rwr_res <- rwr_eigen_cpp(A, v, restart = p, threshold = threshold, max_iter = maxIter)
+        rwr_scores <- rwr_res$score
         names(rwr_scores) <- nodes
+        iter <- as.integer(rwr_res$iterations)
         
     } else {
         if (verbose) message("Running Signed RWR (Up and Down separately)...")
@@ -256,11 +289,35 @@ nsea_gson <- function(geneList,
         rwr_up <- rep(0, length(nodes))
         rwr_down <- rep(0, length(nodes))
         
-        if (sum(v_up) > 0) rwr_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
-        if (sum(v_down) > 0) rwr_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+        iter_up <- 0
+        iter_down <- 0
+        
+        if (sum(v_up) > 0) {
+            r_up <- rwr_eigen_cpp(A, v_up, restart = p, threshold = threshold, max_iter = maxIter)
+            rwr_up <- r_up$score
+            iter_up <- r_up$iterations
+        }
+        if (sum(v_down) > 0) {
+            r_down <- rwr_eigen_cpp(A, v_down, restart = p, threshold = threshold, max_iter = maxIter)
+            rwr_down <- r_down$score
+            iter_down <- r_down$iterations
+        }
         
         rwr_scores <- rwr_up - rwr_down
         names(rwr_scores) <- nodes
+        iter <- as.integer(max(iter_up, iter_down))
+    }
+    
+    if (specific_weight) {
+        if (verbose) message("Applying gene specificity weighting (TF-IDF)...")
+        gsid2gene <- gson@gsid2gene
+        N <- length(unique(gsid2gene$gsid))
+        gene_freq <- table(gsid2gene$gene)
+        df_vals <- as.numeric(gene_freq[names(rwr_scores)])
+        df_vals[is.na(df_vals)] <- 1 # Minimum frequency 1
+        w <- log(N / df_vals)
+        w[w < 0] <- 0
+        rwr_scores <- rwr_scores * w
     }
     
     rwr_scores <- sort(rwr_scores, decreasing = TRUE)
@@ -286,7 +343,9 @@ nsea_gson <- function(geneList,
                     res,
                     network = network,
                     diffusion_scores = rwr_scores,
-                    mode = mode)
+                    mode = mode,
+                    iterations = iter,
+                    restart_prob = p)
     
     return(res_nsea)
 }

@@ -12,10 +12,10 @@ using namespace Rcpp;
 //' @param restart restart probability (e.g., 0.5)
 //' @param threshold convergence threshold
 //' @param max_iter maximal number of iterations
-//' @return numeric vector of stationary probabilities
+//' @return list containing stationary probabilities and iterations
 //' @noRd
 // [[Rcpp::export]]
-NumericVector rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, 
+Rcpp::List rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, 
                             const Eigen::Map<Eigen::VectorXd>& v, 
                             double restart, 
                             double threshold, 
@@ -36,10 +36,14 @@ NumericVector rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A,
         
         // Check for convergence (L1 norm of difference)
         if((u - u_old).cwiseAbs().sum() < threshold) {
+            iter++;
             break;
         }
         iter++;
     }
     
-    return Rcpp::wrap(u);
+    return Rcpp::List::create(
+        Rcpp::Named("score") = Rcpp::wrap(u),
+        Rcpp::Named("iterations") = iter
+    );
 }

@@ -140,6 +140,8 @@ setClass("gseaResult",
 #' @slot network The input network used for propagation
 #' @slot diffusion_scores The stationary probabilities (or score differences) after RWR
 #' @slot mode The propagation mode used ("evidence" or "signed")
+#' @slot iterations The number of RWR iterations to converge
+#' @slot restart_prob The restart probability used in RWR
 #' @exportClass nseaResult
 #' @author Guangchuang Yu \url{https://yulab-smu.top}
 #' @keywords classes
@@ -148,7 +150,9 @@ setClass("nseaResult",
          representation = representation(
              network          = "ANY",
              diffusion_scores = "numeric",
-             mode             = "character"
+             mode             = "character",
+             iterations       = "integer",
+             restart_prob     = "numeric"
          )
          )
 

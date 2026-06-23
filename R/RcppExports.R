@@ -28,7 +28,7 @@ gsea_scores_cpp <- function(stats, in_set, exponent) {
 #' @param restart restart probability (e.g., 0.5)
 #' @param threshold convergence threshold
 #' @param max_iter maximal number of iterations
-#' @return numeric vector of stationary probabilities
+#' @return list containing stationary probabilities and iterations
 #' @noRd
 rwr_eigen_cpp <- function(A, v, restart, threshold, max_iter) {
     .Call(`_enrichit_rwr_eigen_cpp`, A, v, restart, threshold, max_iter)

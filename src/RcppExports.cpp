@@ -98,7 +98,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // rwr_eigen_cpp
-NumericVector rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
+Rcpp::List rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
 RcppExport SEXP _enrichit_rwr_eigen_cpp(SEXP ASEXP, SEXP vSEXP, SEXP restartSEXP, SEXP thresholdSEXP, SEXP max_iterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;

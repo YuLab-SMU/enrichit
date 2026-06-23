@@ -21,6 +21,10 @@ It inherits from gseaResult and contains additional network-related attributes.
 \item{\code{diffusion_scores}}{The stationary probabilities (or score differences) after RWR}
 
 \item{\code{mode}}{The propagation mode used ("evidence" or "signed")}
+
+\item{\code{iterations}}{The number of RWR iterations to converge}
+
+\item{\code{restart_prob}}{The restart probability used in RWR}
 }}
 
 \author{

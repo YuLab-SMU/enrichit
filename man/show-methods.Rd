@@ -8,6 +8,8 @@
 show(object)
 
 show(object)
+
+show(object)
 }
 \arguments{
 \item{object}{A \code{enrichResult} instance.}
@@ -16,9 +18,13 @@ show(object)
 message
 
 message
+
+message
 }
 \description{
 show method for \code{gseaResult} instance
+
+show method for \code{nseaResult} instance
 
 show method for \code{enrichResult} instance
 }

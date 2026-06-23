@@ -10,6 +10,7 @@ nsea(
   gene_sets,
   mode = c("evidence", "signed"),
   p = 0.5,
+  specific_weight = FALSE,
   minGSSize = 10,
   maxGSSize = 500,
   threshold = 1e-09,
@@ -29,6 +30,8 @@ nsea(
 
 \item{p}{restart probability for RWR (default is 0.5).}
 
+\item{specific_weight}{logical, whether to apply gene specificity weighting (TF-IDF style) based on gene frequencies in \code{gene_sets}. Default is FALSE.}
+
 \item{minGSSize}{minimal size of each gene set for analyzing. default here is 10.}
 
 \item{maxGSSize}{maximal size of genes annotated for testing. default here is 500.}
@@ -42,7 +45,7 @@ nsea(
 \item{...}{other arguments passed to \code{gsea()}.}
 }
 \value{
-A \code{gseaResult} object of NSEA results.
+A \code{nseaResult} object of NSEA results.
 }
 \description{
 Network-based Gene Set Enrichment Analysis
