@@ -263,3 +263,125 @@ select_features_for_ora <- function(x, cutoff = 0.05, by = c("pvalue", "score"),
         universe = x$feature_id
     )
 }
+
+#' Aggregate multiple enrichment results (Late Fusion)
+#'
+#' Combine pathway-level enrichment results from multiple omics or independent analyses.
+#' P-values of identical pathways are merged using statistical methods (e.g., Brown's method).
+#'
+#' @param res_list A named list of enrichment result objects (e.g., `enrichResult`, `gseaResult`, `nseaResult`).
+#' @param method Character, aggregation method for p-values. One of "brown", "fisher", or "stouffer".
+#' @param ... Additional arguments passed to `aggregate_omics` (e.g., `cov_matrix` for Brown's method).
+#'
+#' @return An `enrichResult` object containing the aggregated p-values, FDR, and combined gene lists.
+#' @export
+aggregate_enrichment <- function(res_list, method = c("brown", "fisher", "stouffer"), ...) {
+    method <- match.arg(method)
+    
+    if (!is.list(res_list) || length(res_list) < 2) {
+        stop("res_list must be a list of at least two enrichment result objects.")
+    }
+    
+    if (is.null(names(res_list))) {
+        names(res_list) <- paste0("Omics_", seq_along(res_list))
+    }
+    
+    # Extract results to data.frames
+    df_list <- lapply(res_list, function(x) {
+        if (inherits(x, c("enrichResult", "gseaResult", "nseaResult"))) {
+            return(as.data.frame(x))
+        } else if (is.data.frame(x)) {
+            return(x)
+        } else {
+            stop("Elements in res_list must be enrichResult, gseaResult, nseaResult, or data.frame.")
+        }
+    })
+    
+    # Get all unique pathway IDs
+    all_ids <- unique(unlist(lapply(df_list, function(df) df$ID)))
+    
+    # Build p-value matrix (rows = pathways, cols = omics)
+    p_mat <- matrix(NA_real_, nrow = length(all_ids), ncol = length(df_list))
+    rownames(p_mat) <- all_ids
+    colnames(p_mat) <- names(res_list)
+    
+    # Build description map and combined gene lists
+    desc_map <- character(length(all_ids))
+    names(desc_map) <- all_ids
+    
+    gene_list_map <- lapply(all_ids, function(id) character(0))
+    names(gene_list_map) <- all_ids
+    
+    for (i in seq_along(df_list)) {
+        df <- df_list[[i]]
+        if (nrow(df) == 0) next
+        
+        idx <- match(df$ID, all_ids)
+        p_mat[idx, i] <- df$pvalue
+        
+        # Map descriptions (take the first non-NA/non-empty encountered)
+        unmapped <- desc_map[idx] == "" | is.na(desc_map[idx])
+        if (any(unmapped)) {
+            desc_map[idx[unmapped]] <- df$Description[unmapped]
+        }
+        
+        # Combine genes from 'geneID' (ORA) or 'core_enrichment' (GSEA)
+        gene_col <- if ("geneID" %in% colnames(df)) "geneID" else if ("core_enrichment" %in% colnames(df)) "core_enrichment" else NULL
+        if (!is.null(gene_col)) {
+            for (j in seq_len(nrow(df))) {
+                id <- df$ID[j]
+                genes <- unlist(strsplit(as.character(df[[gene_col]][j]), "/"))
+                gene_list_map[[id]] <- unique(c(gene_list_map[[id]], genes))
+            }
+        }
+    }
+    
+    # Aggregate p-values using the underlying feature-level aggregator
+    # This perfectly reuses Brown's/Fisher's/Stouffer's logic on the pathway level!
+    agg_res <- aggregate_omics(p_mat, method = method, input = "pvalue", ...)
+    combined_p <- agg_res$pvalue
+    
+    # Drop pathways with NA aggregated p-value
+    valid_idx <- !is.na(combined_p)
+    combined_p <- combined_p[valid_idx]
+    all_ids <- names(combined_p)
+    
+    padj <- stats::p.adjust(combined_p, method = "BH")
+    
+    # Safely compute qvalue if function exists, else NA
+    qval <- tryCatch({
+        calculate_qvalue(combined_p)
+    }, error = function(e) rep(NA_real_, length(combined_p)))
+    
+    combined_genes <- vapply(all_ids, function(id) paste(gene_list_map[[id]], collapse = "/"), character(1))
+    counts <- vapply(all_ids, function(id) length(gene_list_map[[id]]), integer(1))
+    
+    res_df <- data.frame(
+        ID = all_ids,
+        Description = desc_map[all_ids],
+        pvalue = combined_p,
+        p.adjust = padj,
+        qvalue = qval,
+        geneID = combined_genes,
+        Count = counts,
+        stringsAsFactors = FALSE
+    )
+    
+    res_df <- res_df[order(res_df$pvalue), ]
+    rownames(res_df) <- res_df$ID
+    
+    # Create a generic enrichResult to hold the late fusion output
+    methods::new("enrichResult",
+        result = res_df,
+        pvalueCutoff = 1.0,
+        pAdjustMethod = "BH",
+        qvalueCutoff = 1.0,
+        gene = character(0),
+        universe = character(0),
+        geneSets = list(),
+        organism = "UNKNOWN",
+        keytype = "UNKNOWN",
+        ontology = "Multi-omics Late Fusion",
+        readable = FALSE
+    )
+}
