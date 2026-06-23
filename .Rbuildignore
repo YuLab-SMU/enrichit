@@ -11,3 +11,4 @@ src/symbols.rds
 .dev
 ^analysis$
 bayes_enrich_method.md
+.dev/

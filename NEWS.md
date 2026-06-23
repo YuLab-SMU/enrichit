@@ -1,5 +1,10 @@
-# enrichit 0.1.5.002
+# enrichit 0.1.6
 
++ implement Network-based Set Enrichment Analysis (NSEA) (2026-06-23, Tue)
+    - add `nsea()` and `nsea_gson()` for network-ranked GSEA based on Random Walk with Restart (RWR)
+    - add `prepare_network()` for parsing and normalizing edge lists or sparse matrices
+    - implement extremely fast RWR using `RcppEigen` sparse matrix multiplication
+    - introduce zero-dependency integration strategy for network propagation followed by multilevel GSEA
 + align multilevel GSEA rank scaling with `fgsea::prepareStats()` to reduce result drift relative to the long-used fgsea backend (2026-06-22, Mon)
     - replace the fixed `* 1e6` scaling in `prepare_gsea_inputs()` with fgsea-style total-weight normalization and integer rounding
     - add a regression test that compares `gsea(method = "multilevel")` against `fgsea::fgseaMultilevel()` on the same ranked input

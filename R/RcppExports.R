@@ -21,3 +21,16 @@ gsea_scores_cpp <- function(stats, in_set, exponent) {
     .Call(`_enrichit_gsea_scores_cpp`, stats, in_set, exponent)
 }
 
+#' Random Walk with Restart using Eigen Sparse Matrix
+#'
+#' @param A column-normalized sparse matrix
+#' @param v initial restart vector
+#' @param restart restart probability (e.g., 0.5)
+#' @param threshold convergence threshold
+#' @param max_iter maximal number of iterations
+#' @return numeric vector of stationary probabilities
+#' @noRd
+rwr_eigen_cpp <- function(A, v, restart, threshold, max_iter) {
+    .Call(`_enrichit_rwr_eigen_cpp`, A, v, restart, threshold, max_iter)
+}
+

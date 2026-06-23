@@ -3,6 +3,7 @@
 #' Perform Gene Set Enrichment Analysis (GSEA) using a ranked gene list.
 #'
 #' @inheritParams enrichit_params
+#' @param weight A named numeric vector of weights for genes. The names should match the names of geneList. If provided, the geneList will be multiplied by the weight and resorted before GSEA (default: NULL).
 #' @param eps Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.
 #' @param sampleSize Sample size for multilevel methods (default: 101).
 #' @param seed Random seed for reproducibility (default: FALSE). If FALSE, a random seed is generated.
@@ -40,6 +41,7 @@
 #'
 #' @export
 gsea <- function(geneList, gene_sets, 
+                 weight = NULL,
                  minGSSize = 10,
                  maxGSSize = 500,
                  nPerm = 1000, 
@@ -57,6 +59,33 @@ gsea <- function(geneList, gene_sets,
                  verbose = TRUE) {
     
     gene_sets <- validate_gene_sets(gene_sets)
+    
+    if (!is.null(weight)) {
+        if (!is.numeric(weight) || is.null(names(weight))) {
+            stop("weight must be a named numeric vector")
+        }
+        
+        common_genes <- intersect(names(geneList), names(weight))
+        if (length(common_genes) == 0) {
+            stop("No common genes found between geneList and weight")
+        }
+        if (verbose && length(common_genes) < length(geneList)) {
+            message("Weight provided: ", length(common_genes), " out of ", length(geneList), " genes are weighted.")
+        }
+        
+        geneList <- geneList[common_genes]
+        weight_aligned <- weight[common_genes]
+        
+        if (any(weight_aligned < 0, na.rm = TRUE)) {
+            warning("Negative weights detected. Taking absolute values.")
+            weight_aligned <- abs(weight_aligned)
+        }
+        
+        # Apply weight
+        geneList <- geneList * weight_aligned
+        # Re-sort to maintain preranked requirement
+        geneList <- sort(geneList, decreasing = TRUE)
+    }
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
     scoreType <- match.arg(scoreType, c("std", "pos", "neg"))
@@ -229,12 +258,14 @@ scale_fgsea_ranks <- function(geneList, exponent) {
 #'
 #' @title gsea_gson
 #' @inheritParams enrichit_params
+#' @param weight A named numeric vector of weights for genes.
 #' @param ... Additional parameters passed to gsea()
 #' @return gseaResult object
 #' @author Guangchuang Yu
 #' @export
 gsea_gson <- function(geneList,
                  gson,
+                 weight = NULL,
                  nPerm = 1000,
                  exponent = 1.0,
                  minGSSize = 10,
@@ -277,6 +308,7 @@ gsea_gson <- function(geneList,
     
     gsea_res <- gsea(geneList = geneList, 
                      gene_sets = geneSets, 
+                     weight = weight,
                      minGSSize = minGSSize,
                      maxGSSize = maxGSSize,
                      nPerm = nPerm, 

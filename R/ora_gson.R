@@ -6,6 +6,7 @@
 #' @param qvalueCutoff cutoff of qvalue
 #' @param universe background genes, default is the intersection of the 'universe' with genes that have annotations. 
 #' Users can set `options(enrichment_force_universe = TRUE)` to force the 'universe' untouched.
+#' @param weight A named numeric vector of weights for background genes. If provided, Weighted ORA will be performed.
 #' @inheritParams enrichit_params
 #' @return  A `enrichResult` instance.
 #' @importClassesFrom methods data.frame
@@ -18,6 +19,7 @@ ora_gson <- function(gene,
                               pvalueCutoff,
                               pAdjustMethod="BH",
                               universe = NULL,
+                              weight = NULL,
                               minGSSize=10,
                               maxGSSize=500,
                               qvalueCutoff=0.2,
@@ -71,7 +73,7 @@ ora_gson <- function(gene,
     }
     geneSets <- geneSets[idx]
 
-    ora_res <- ora(gene, geneSets, universe = extID)
+    ora_res <- ora(gene, geneSets, universe = extID, weight = weight)
 
     if (is.null(ora_res) || nrow(ora_res) == 0) {
         return(NULL)

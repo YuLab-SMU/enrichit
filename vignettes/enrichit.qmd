@@ -19,10 +19,11 @@ vignette: >
 
 # Introduction
 
-Functional enrichment analysis is a staple in bioinformatics for interpreting lists of genes identified from omics experiments. `enrichit` provides fast, C++-based implementations of two of the most widely used methods:
+Functional enrichment analysis is a staple in bioinformatics for interpreting lists of genes identified from omics experiments. `enrichit` provides fast, C++-based implementations of three of the most widely used methods:
 
 1.  **Over-Representation Analysis (ORA)**
 2.  **Gene Set Enrichment Analysis (GSEA)**
+3.  **Network-based Set Enrichment Analysis (NSEA)**
 
 The package is designed to be efficient and easy to integrate into existing workflows, with a focus on performance and standardized output formats.
 
@@ -127,6 +128,75 @@ head(gsea_result)
 ```{r eval=FALSE}
 # Assuming you have a GSON object 'g'
 # result <- gsea_gson(geneList = geneList, gson = g)
+```
+
+# Network-based Set Enrichment Analysis (NSEA)
+
+Traditional enrichment methods treat pathways as independent "bags of genes," ignoring the biological interactions between them. NSEA addresses this by leveraging a biological network (e.g., a Protein-Protein Interaction network) to propagate the initial gene signals before performing enrichment. 
+
+## Method
+
+`enrichit` implements NSEA by combining a highly optimized **Random Walk with Restart (RWR)** algorithm with the fast multilevel GSEA engine. 
+
+1. **Propagation**: The initial gene scores are mapped onto the network as seed probabilities. An extremely fast C++ RWR algorithm (powered by `RcppEigen` sparse matrix multiplication) diffuses these probabilities until a stationary distribution is reached.
+2. **Ranking**: Genes are ranked based on their final network propagation scores, which reflect their topological proximity to the initial gene list.
+3. **Enrichment**: The ranked list is directly passed to the internal GSEA engine. Because propagation scores are non-negative, the enrichment is evaluated in a one-sided manner (`scoreType = "pos"`).
+
+## Example
+
+```{r}
+library(enrichit)
+library(Matrix)
+
+# 1. Create a mock network (edge list)
+set.seed(123)
+edges <- data.frame(
+    from = sample(LETTERS[1:10], 20, replace = TRUE),
+    to = sample(LETTERS[1:10], 20, replace = TRUE),
+    weight = runif(20)
+)
+edges <- edges[edges$from != edges$to, ] # remove self loops
+
+# 2. Create a mock geneList with evidence scores
+geneList <- setNames(runif(5), sample(LETTERS[1:10], 5))
+
+# 3. Define gene sets
+gene_sets <- list(
+    PathwayA = c("A", "B", "C", "D"),
+    PathwayB = c("E", "F", "G", "H"),
+    PathwayC = c("I", "J", "A")
+)
+
+# 4. Run NSEA
+nsea_result <- nsea(
+    geneList = geneList,
+    network = edges,
+    gene_sets = gene_sets,
+    p = 0.5,         # restart probability
+    minGSSize = 2,
+    maxGSSize = 10
+)
+
+# View results
+head(nsea_result)
+```
+
+If you plan to run multiple gene lists on the same network, you can significantly speed up the process by preparing the network once:
+
+```{r eval=FALSE}
+net <- prepare_network(edges)
+res1 <- nsea(geneList = list1, network = net, gene_sets = gene_sets)
+res2 <- nsea(geneList = list2, network = net, gene_sets = gene_sets)
+```
+
+# Bayesian Over-Representation Analysis
+
+For ORA results, `enrichit` also provides a Bayesian framework (`bayes_enrich()`) to estimate the posterior probability of explanatory terms, helping to select active pathways while penalizing redundancy.
+
+```{r eval=FALSE}
+# After obtaining an ORA result object
+# bayes_res <- bayes_enrich(ora_result)
+# summary <- bayes_summary(bayes_res)
 ```
 
 # Session Info
