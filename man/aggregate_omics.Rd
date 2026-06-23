@@ -6,7 +6,7 @@
 \usage{
 aggregate_omics(
   x,
-  method = c("fisher", "stouffer", "mean", "max_abs"),
+  method = c("fisher", "stouffer", "brown", "mean", "weighted_mean", "max_abs"),
   input = c("pvalue", "signed_score"),
   feature_type = "gene",
   conflict_policy = c("keep_all", "strict", "penalty"),

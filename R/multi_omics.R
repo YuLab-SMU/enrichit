@@ -12,7 +12,7 @@
 #' @return An object of class `omics_aggregated` containing `score`, `pvalue` (if input is "pvalue"), `input_type`, `feature_type`, and `feature_id`.
 #' @export
 #' @importFrom stats pchisq pnorm qnorm
-aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs"), 
+aggregate_omics <- function(x, method = c("fisher", "stouffer", "brown", "mean", "weighted_mean", "max_abs"), 
                             input = c("pvalue", "signed_score"), feature_type = "gene", 
                             conflict_policy = c("keep_all", "strict", "penalty"), ...) {
     method <- match.arg(method)
@@ -62,8 +62,41 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
                 z_stouffer <- sum(z) / sqrt(length(z))
                 pnorm(z_stouffer, lower.tail = FALSE)
             })
+        } else if (method == "brown") {
+            # Brown's method (Empirical Brown's Method)
+            args <- list(...)
+            if (!is.null(args$cov_matrix)) {
+                cov_mat <- args$cov_matrix
+            } else {
+                # Compute empirical covariance of -2 * log(p) across all features
+                logP <- -2 * log(pmax(mat, .Machine$double.xmin))
+                cov_mat <- stats::cov(logP, use = "pairwise.complete.obs")
+                cov_mat[is.na(cov_mat)] <- 0
+            }
+            
+            agg_p <- apply(mat, 1, function(p) {
+                idx <- which(!is.na(p))
+                k <- length(idx)
+                if (k == 0) return(NA_real_)
+                if (k == 1) return(p[idx])
+                
+                p_vals <- pmax(p[idx], .Machine$double.xmin)
+                X <- -2 * sum(log(p_vals))
+                
+                VX <- sum(cov_mat[idx, idx])
+                
+                # If empirical variance is <= 4k, fallback to Fisher's independent assumption
+                if (is.na(VX) || VX <= 4 * k) {
+                    return(pchisq(X, df = 2 * k, lower.tail = FALSE))
+                }
+                
+                c_factor <- VX / (4 * k)
+                df <- (8 * k^2) / VX
+                
+                pchisq(X / c_factor, df = df, lower.tail = FALSE)
+            })
         } else {
-            stop("For input='pvalue', method must be 'fisher' or 'stouffer'")
+            stop("For input='pvalue', method must be 'fisher', 'stouffer', or 'brown'")
         }
         res$pvalue <- agg_p
         # Convert aggregated pvalue to score for ranking
@@ -79,6 +112,22 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
         
         if (method == "mean") {
             agg_s <- rowMeans(mat, na.rm = TRUE)
+        } else if (method == "weighted_mean") {
+            args <- list(...)
+            weights <- args$weights
+            if (is.null(weights)) {
+                warning("method='weighted_mean' requires 'weights' argument. Falling back to simple mean.")
+                agg_s <- rowMeans(mat, na.rm = TRUE)
+            } else {
+                if (length(weights) != ncol(mat)) {
+                    stop("Length of 'weights' must match the number of omics columns.")
+                }
+                agg_s <- apply(mat, 1, function(s) {
+                    idx <- !is.na(s)
+                    if (sum(idx) == 0) return(NA_real_)
+                    sum(s[idx] * weights[idx]) / sum(weights[idx])
+                })
+            }
         } else if (method == "max_abs") {
             agg_s <- apply(mat, 1, function(s) {
                 s <- s[!is.na(s)]
@@ -86,7 +135,7 @@ aggregate_omics <- function(x, method = c("fisher", "stouffer", "mean", "max_abs
                 s[which.max(abs(s))]
             })
         } else {
-            stop("For input='signed_score', method must be 'mean' or 'max_abs'")
+            stop("For input='signed_score', method must be 'mean', 'weighted_mean', or 'max_abs'")
         }
         
         if (conflict_policy == "strict") {
