@@ -3,31 +3,52 @@
 \docType{class}
 \name{nseaResult-class}
 \alias{nseaResult-class}
-\alias{show,nseaResult-method}
-\alias{summary,nseaResult-method}
 \title{Class "nseaResult"
-This class represents the result of Network-based Set Enrichment Analysis (NSEA).
-It inherits from gseaResult and contains additional network-related attributes.}
+This class represents the result of Network-based Set Enrichment Analysis (NSEA).}
 \description{
 Class "nseaResult"
 This class represents the result of Network-based Set Enrichment Analysis (NSEA).
-It inherits from gseaResult and contains additional network-related attributes.
 }
 \section{Slots}{
 
 \describe{
-\item{\code{network}}{The input network used for propagation}
+\item{\code{result}}{enrichment analysis}
 
-\item{\code{diffusion_scores}}{The stationary probabilities (or score differences) after RWR}
+\item{\code{pvalueCutoff}}{pvalueCutoff}
 
-\item{\code{mode}}{The propagation mode used ("evidence" or "signed")}
+\item{\code{pAdjustMethod}}{pvalue adjust method}
 
-\item{\code{iterations}}{The number of RWR iterations to converge}
+\item{\code{qvalueCutoff}}{qvalueCutoff}
 
-\item{\code{restart_prob}}{The restart probability used in RWR}
+\item{\code{organism}}{only "human" supported}
+
+\item{\code{ontology}}{biological ontology}
+
+\item{\code{geneSets}}{gene sets}
+
+\item{\code{geneList}}{order rank geneList}
+
+\item{\code{keytype}}{ID type of gene}
+
+\item{\code{readable}}{logical flag of gene ID in symbol or not.}
+
+\item{\code{termsim}}{Calculation matrix of termsim.}
+
+\item{\code{method}}{Method of termsim.}
+
+\item{\code{params}}{parameters}
+
+\item{\code{network}}{sparse matrix or data.frame representing the underlying network.}
+
+\item{\code{diffusion_scores}}{numeric vector of RWR diffusion scores for each node.}
+
+\item{\code{mode}}{character, "evidence" or "signed", describing the RWR propagation mode.}
+
+\item{\code{iterations}}{integer, the actual number of iterations RWR took to converge.}
+
+\item{\code{restart_prob}}{numeric, the restart probability used in RWR.}
 }}
 
 \author{
 Guangchuang Yu \url{https://yulab-smu.top}
 }
-\keyword{classes}

@@ -11,7 +11,8 @@
 #'
 #' @return An object of class `omics_aggregated` containing `score`, `pvalue` (if input is "pvalue"), `input_type`, `feature_type`, and `feature_id`.
 #' @export
-#' @importFrom stats pchisq pnorm qnorm
+#' @importFrom stats p.adjust pchisq pnorm qnorm median
+#' @importFrom rlang check_installed
 aggregate_omics <- function(x, method = c("fisher", "stouffer", "brown", "mean", "weighted_mean", "max_abs"), 
                             input = c("pvalue", "signed_score"), feature_type = "gene", 
                             conflict_policy = c("keep_all", "strict", "penalty"), ...) {
@@ -286,79 +287,110 @@ aggregate_enrichment <- function(res_list, method = c("brown", "fisher", "stouff
         names(res_list) <- paste0("Omics_", seq_along(res_list))
     }
     
-    # Extract results to data.frames
+    meta <- list(organism = "UNKNOWN", ontology = "UNKNOWN", keytype = "UNKNOWN")
     df_list <- lapply(res_list, function(x) {
         if (inherits(x, c("enrichResult", "gseaResult", "nseaResult"))) {
-            return(as.data.frame(x))
+            if (inherits(x, "enrichResult")) {
+                meta$organism <<- x@organism
+                meta$ontology <<- x@ontology
+                meta$keytype <<- x@keytype
+            } else {
+                meta$organism <<- x@organism
+                meta$ontology <<- x@setType
+                meta$keytype <<- x@keytype
+            }
+            df <- x@result
         } else if (is.data.frame(x)) {
-            return(x)
+            df <- x
         } else {
             stop("Elements in res_list must be enrichResult, gseaResult, nseaResult, or data.frame.")
         }
+        
+        if (!all(c("ID", "pvalue") %in% colnames(df))) {
+            stop("Each enrichment result must contain at least 'ID' and 'pvalue' columns.")
+        }
+        
+        if (!"Description" %in% colnames(df)) {
+            df$Description <- df$ID
+        }
+        
+        df$ID <- as.character(df$ID)
+        df <- df[!duplicated(df$ID), , drop = FALSE]
+        df
     })
     
-    # Get all unique pathway IDs
-    all_ids <- unique(unlist(lapply(df_list, function(df) df$ID)))
+    non_empty <- vapply(df_list, nrow, integer(1)) > 0
+    if (!all(non_empty)) {
+        df_list <- df_list[non_empty]
+        res_list <- res_list[non_empty]
+    }
+    if (length(df_list) < 2) {
+        stop("At least two non-empty enrichment results are required.")
+    }
+    
+    # Use the shared pathway universe to avoid silently treating missing terms as tested-but-null.
+    common_ids <- Reduce(intersect, lapply(df_list, function(df) df$ID))
+    if (length(common_ids) == 0) {
+        return(.new_late_fusion_result(
+            result_df = data.frame(),
+            method = method,
+            gene_sets = list(),
+            meta = meta
+        ))
+    }
     
     # Build p-value matrix (rows = pathways, cols = omics)
-    p_mat <- matrix(NA_real_, nrow = length(all_ids), ncol = length(df_list))
-    rownames(p_mat) <- all_ids
+    p_mat <- matrix(NA_real_, nrow = length(common_ids), ncol = length(df_list))
+    rownames(p_mat) <- common_ids
     colnames(p_mat) <- names(res_list)
     
     # Build description map and combined gene lists
-    desc_map <- character(length(all_ids))
-    names(desc_map) <- all_ids
+    desc_map <- setNames(rep("", length(common_ids)), common_ids)
     
-    gene_list_map <- lapply(all_ids, function(id) character(0))
-    names(gene_list_map) <- all_ids
+    gene_list_map <- setNames(vector("list", length(common_ids)), common_ids)
+    for (id in common_ids) {
+        gene_list_map[[id]] <- character(0)
+    }
     
     for (i in seq_along(df_list)) {
         df <- df_list[[i]]
-        if (nrow(df) == 0) next
-        
-        idx <- match(df$ID, all_ids)
-        p_mat[idx, i] <- df$pvalue
+        df <- df[match(common_ids, df$ID), , drop = FALSE]
+        p_mat[, i] <- df$pvalue
         
         # Map descriptions (take the first non-NA/non-empty encountered)
-        unmapped <- desc_map[idx] == "" | is.na(desc_map[idx])
+        unmapped <- desc_map == "" | is.na(desc_map)
         if (any(unmapped)) {
-            desc_map[idx[unmapped]] <- df$Description[unmapped]
+            desc_map[unmapped] <- df$Description[unmapped]
         }
         
         # Combine genes from 'geneID' (ORA) or 'core_enrichment' (GSEA)
         gene_col <- if ("geneID" %in% colnames(df)) "geneID" else if ("core_enrichment" %in% colnames(df)) "core_enrichment" else NULL
         if (!is.null(gene_col)) {
             for (j in seq_len(nrow(df))) {
-                id <- df$ID[j]
-                genes <- unlist(strsplit(as.character(df[[gene_col]][j]), "/"))
-                gene_list_map[[id]] <- unique(c(gene_list_map[[id]], genes))
+                genes <- unlist(strsplit(as.character(df[[gene_col]][j]), "/", fixed = TRUE))
+                genes <- genes[nzchar(genes) & !is.na(genes)]
+                gene_list_map[[common_ids[j]]] <- unique(c(gene_list_map[[common_ids[j]]], genes))
             }
         }
     }
     
-    # Aggregate p-values using the underlying feature-level aggregator
-    # This perfectly reuses Brown's/Fisher's/Stouffer's logic on the pathway level!
     agg_res <- aggregate_omics(p_mat, method = method, input = "pvalue", ...)
     combined_p <- agg_res$pvalue
     
     # Drop pathways with NA aggregated p-value
     valid_idx <- !is.na(combined_p)
     combined_p <- combined_p[valid_idx]
-    all_ids <- names(combined_p)
+    common_ids <- names(combined_p)
     
     padj <- stats::p.adjust(combined_p, method = "BH")
+    qval <- calculate_qvalue(combined_p)
     
-    # Safely compute qvalue if function exists, else NA
-    qval <- tryCatch({
-        calculate_qvalue(combined_p)
-    }, error = function(e) rep(NA_real_, length(combined_p)))
-    
-    combined_genes <- vapply(all_ids, function(id) paste(gene_list_map[[id]], collapse = "/"), character(1))
-    counts <- vapply(all_ids, function(id) length(gene_list_map[[id]]), integer(1))
+    combined_genes <- vapply(common_ids, function(id) paste(gene_list_map[[id]], collapse = "/"), character(1))
+    counts <- vapply(common_ids, function(id) length(gene_list_map[[id]]), integer(1))
     
     res_df <- data.frame(
-        ID = all_ids,
-        Description = desc_map[all_ids],
+        ID = common_ids,
+        Description = desc_map[common_ids],
         pvalue = combined_p,
         p.adjust = padj,
         qvalue = qval,
@@ -370,18 +402,40 @@ aggregate_enrichment <- function(res_list, method = c("brown", "fisher", "stouff
     res_df <- res_df[order(res_df$pvalue), ]
     rownames(res_df) <- res_df$ID
     
-    # Create a generic enrichResult to hold the late fusion output
-    methods::new("enrichResult",
-        result = res_df,
+    gene_sets <- setNames(
+        lapply(common_ids, function(id) gene_list_map[[id]]),
+        common_ids
+    )
+    
+    .new_late_fusion_result(
+        result_df = res_df,
+        method = method,
+        gene_sets = gene_sets,
+        meta = meta
+    )
+}
+
+.new_late_fusion_result <- function(result_df, method, gene_sets, meta) {
+    all_genes <- unique(unlist(gene_sets, use.names = FALSE))
+    if (length(all_genes) == 0) {
+        all_genes <- character(0)
+    }
+    
+    new("enrichResult",
+        result = result_df,
         pvalueCutoff = 1.0,
         pAdjustMethod = "BH",
         qvalueCutoff = 1.0,
-        gene = character(0),
-        universe = character(0),
-        geneSets = list(),
-        organism = "UNKNOWN",
-        keytype = "UNKNOWN",
-        ontology = "Multi-omics Late Fusion",
-        readable = FALSE
+        organism = meta$organism,
+        ontology = if (isTRUE(nzchar(meta$ontology))) meta$ontology else "LateFusion",
+        gene = all_genes,
+        keytype = meta$keytype,
+        universe = all_genes,
+        gene2Symbol = character(0),
+        geneSets = gene_sets,
+        readable = FALSE,
+        termsim = matrix(0, nrow = 0, ncol = 0),
+        method = paste0("late_fusion_", method),
+        dr = list()
     )
 }

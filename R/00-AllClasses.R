@@ -131,28 +131,38 @@ setClass("gseaResult",
 
 #' Class "nseaResult"
 #' This class represents the result of Network-based Set Enrichment Analysis (NSEA).
-#' It inherits from gseaResult and contains additional network-related attributes.
 #'
 #' @name nseaResult-class
-#' @aliases nseaResult-class show,nseaResult-method summary,nseaResult-method
-#'
+#' @aliases nseaResult-class
 #' @docType class
-#' @slot network The input network used for propagation
-#' @slot diffusion_scores The stationary probabilities (or score differences) after RWR
-#' @slot mode The propagation mode used ("evidence" or "signed")
-#' @slot iterations The number of RWR iterations to converge
-#' @slot restart_prob The restart probability used in RWR
+#' @slot result enrichment analysis
+#' @slot pvalueCutoff pvalueCutoff
+#' @slot pAdjustMethod pvalue adjust method
+#' @slot qvalueCutoff qvalueCutoff
+#' @slot organism only "human" supported
+#' @slot ontology biological ontology
+#' @slot geneSets gene sets
+#' @slot geneList order rank geneList
+#' @slot keytype ID type of gene
+#' @slot readable logical flag of gene ID in symbol or not.
+#' @slot termsim Calculation matrix of termsim.
+#' @slot method Method of termsim.
+#' @slot params parameters
+#' @slot network sparse matrix or data.frame representing the underlying network.
+#' @slot diffusion_scores numeric vector of RWR diffusion scores for each node.
+#' @slot mode character, "evidence" or "signed", describing the RWR propagation mode.
+#' @slot iterations integer, the actual number of iterations RWR took to converge.
+#' @slot restart_prob numeric, the restart probability used in RWR.
 #' @exportClass nseaResult
 #' @author Guangchuang Yu \url{https://yulab-smu.top}
-#' @keywords classes
 setClass("nseaResult",
          contains = "gseaResult",
          representation = representation(
-             network          = "ANY",
+             network = "ANY",
              diffusion_scores = "numeric",
-             mode             = "character",
-             iterations       = "integer",
-             restart_prob     = "numeric"
+             mode = "character",
+             iterations = "integer",
+             restart_prob = "numeric"
          )
-         )
+)
 

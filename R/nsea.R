@@ -60,6 +60,83 @@ prepare_network <- function(network, directed = FALSE, normalize = "column") {
     return(A)
 }
 
+build_nsea_result <- function(base_result,
+                              gene_sets,
+                              rwr_scores,
+                              network,
+                              mode,
+                              iter,
+                              p,
+                              organism = "UNKNOWN",
+                              setType = "UNKNOWN",
+                              keytype = "UNKNOWN",
+                              params = NULL) {
+    if (inherits(base_result, "gseaResult")) {
+        result_df <- base_result@result
+        gene_sets <- base_result@geneSets
+        organism <- base_result@organism
+        setType <- base_result@setType
+        keytype <- base_result@keytype
+        params <- base_result@params
+        gene_list <- base_result@geneList
+        perm_scores <- base_result@permScores
+        gene2symbol <- base_result@gene2Symbol
+        readable <- base_result@readable
+        termsim <- base_result@termsim
+        method <- base_result@method
+        dr <- base_result@dr
+    } else if (is.data.frame(base_result)) {
+        result_df <- base_result
+        if (is.null(params)) {
+            params <- list(pvalueCutoff = 1.0, pAdjustMethod = "BH")
+        }
+        gene_list <- rwr_scores
+        perm_scores <- matrix(0, nrow = 0, ncol = 0)
+        gene2symbol <- character(0)
+        readable <- FALSE
+        termsim <- matrix(0, nrow = 0, ncol = 0)
+        method <- "NSEA"
+        dr <- list()
+    } else {
+        stop("base_result must be a gseaResult or data.frame.")
+    }
+    
+    if (!"Description" %in% colnames(result_df)) {
+        result_df$Description <- result_df$ID
+    }
+    if (!"p.adjust" %in% colnames(result_df)) {
+        result_df$p.adjust <- stats::p.adjust(result_df$pvalue, method = params$pAdjustMethod %||% "BH")
+    }
+    if (!"qvalue" %in% colnames(result_df)) {
+        result_df$qvalue <- calculate_qvalue(result_df$pvalue)
+    }
+    rownames(result_df) <- as.character(result_df$ID)
+    
+    new("nseaResult",
+        result = result_df,
+        organism = organism,
+        setType = setType,
+        geneSets = gene_sets,
+        geneList = gene_list,
+        keytype = keytype,
+        permScores = perm_scores,
+        params = params,
+        gene2Symbol = gene2symbol,
+        readable = readable,
+        termsim = termsim,
+        method = method,
+        dr = dr,
+        network = network,
+        diffusion_scores = rwr_scores,
+        mode = mode,
+        iterations = as.integer(iter),
+        restart_prob = p)
+}
+
+`%||%` <- function(x, y) {
+    if (is.null(x) || length(x) == 0) y else x
+}
+
 #' Network-based Gene Set Enrichment Analysis
 #'
 #' @param geneList named numeric vector. In "evidence" mode, must be non-negative. In "signed" mode, can contain both positive and negative values.
@@ -196,15 +273,24 @@ nsea <- function(geneList,
                     ...)
     }
     
-    res_nsea <- new("nseaResult",
-                    res,
-                    network = network,
-                    diffusion_scores = rwr_scores,
-                    mode = mode,
-                    iterations = iter,
-                    restart_prob = p)
-    
-    return(res_nsea)
+    build_nsea_result(
+        base_result = res,
+        gene_sets = gene_sets,
+        rwr_scores = rwr_scores,
+        network = network,
+        mode = mode,
+        iter = iter,
+        p = p,
+        organism = "UNKNOWN",
+        setType = "UNKNOWN",
+        keytype = "UNKNOWN",
+        params = list(
+            pvalueCutoff = 1.0,
+            pAdjustMethod = "BH",
+            minGSSize = minGSSize,
+            maxGSSize = maxGSSize
+        )
+    )
 }
 
 #' Network-based GSEA using a GSON object
@@ -339,13 +425,13 @@ nsea_gson <- function(geneList,
                          ...)
     }
     
-    res_nsea <- new("nseaResult",
-                    res,
-                    network = network,
-                    diffusion_scores = rwr_scores,
-                    mode = mode,
-                    iterations = iter,
-                    restart_prob = p)
-    
-    return(res_nsea)
+    build_nsea_result(
+        base_result = res,
+        gene_sets = NULL,
+        rwr_scores = rwr_scores,
+        network = network,
+        mode = mode,
+        iter = iter,
+        p = p
+    )
 }

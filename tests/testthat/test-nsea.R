@@ -25,9 +25,11 @@ test_that("nsea works", {
                 nPermSimple = 1000,
                 verbose = FALSE)
     
-    expect_s3_class(res, "data.frame")
-    expect_true(nrow(res) > 0)
-    expect_true("PathwayB" %in% res$ID)
+    expect_s4_class(res, "nseaResult")
+    expect_true(nrow(res@result) > 0)
+    expect_true("PathwayB" %in% res@result$ID)
+    expect_identical(res@mode, "evidence")
+    expect_identical(res@iterations, as.integer(res@iterations))
     
     # Test prepare_network manually
     A <- prepare_network(edges)

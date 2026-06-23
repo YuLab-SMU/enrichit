@@ -20,6 +20,7 @@ Imports:
     Matrix,
     methods,
     Rcpp (>= 1.0.10),
+    rlang,
     stats,
     yulab.utils (> 0.2.1)
 LinkingTo: 
