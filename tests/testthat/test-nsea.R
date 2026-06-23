@@ -35,3 +35,37 @@ test_that("nsea works", {
     A <- prepare_network(edges)
     expect_s4_class(A, "dgCMatrix")
 })
+
+test_that("nsea supports signed mode", {
+    edges <- data.frame(
+        from = c("A", "A", "B", "C", "D", "E", "F"),
+        to = c("B", "C", "D", "D", "E", "F", "A"),
+        weight = rep(1, 7),
+        stringsAsFactors = FALSE
+    )
+
+    geneList <- c(A = 1.2, B = 0.8, D = -1.1, E = -0.7, F = 0.3)
+    geneList <- sort(geneList, decreasing = TRUE)
+
+    gene_sets <- list(
+        UpPath = c("A", "B", "C"),
+        DownPath = c("D", "E", "F")
+    )
+
+    res <- nsea(
+        geneList = geneList,
+        network = edges,
+        gene_sets = gene_sets,
+        mode = "signed",
+        p = 0.5,
+        minGSSize = 2,
+        maxGSSize = 10,
+        nPermSimple = 200,
+        verbose = FALSE
+    )
+
+    expect_s4_class(res, "nseaResult")
+    expect_identical(res@mode, "signed")
+    expect_true(nrow(res@result) > 0)
+    expect_equal(sort(names(res@diffusion_scores)), sort(unique(c(edges$from, edges$to))))
+})

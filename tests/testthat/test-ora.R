@@ -90,3 +90,23 @@ test_that("ora_gson excludes zero-overlap sets from multiple testing correction"
   expect_equal(res@result$pvalue, raw_p, tolerance = 1e-10)
   expect_equal(res@result$p.adjust, p.adjust(raw_p, method = "BH"), tolerance = 1e-10)
 })
+
+test_that("weighted ORA runs on a small universe", {
+  skip_if_not_installed("BiasedUrn")
+
+  de_genes <- c("Gene1", "Gene2", "Gene3")
+  all_genes <- paste0("Gene", 1:30)
+  gene_sets <- list(
+    Pathway1 = paste0("Gene", 1:6),
+    Pathway2 = paste0("Gene", 10:18)
+  )
+  weight <- setNames(rep(1, 30), all_genes)
+  weight[c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5", "Gene6")] <- 3
+
+  unweighted <- ora(gene = de_genes, gene_sets = gene_sets, universe = all_genes)
+  weighted <- ora(gene = de_genes, gene_sets = gene_sets, universe = all_genes, weight = weight)
+
+  expect_true(is.data.frame(weighted))
+  expect_true(all(c("ID", "pvalue", "Count") %in% colnames(weighted)))
+  expect_false(isTRUE(all.equal(weighted$pvalue, unweighted$pvalue)))
+})

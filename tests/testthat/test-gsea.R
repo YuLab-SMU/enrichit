@@ -176,3 +176,28 @@ test_that("Multilevel GSEA stays close to fgsea reference results", {
   expect_equal(cmp$NES.x, cmp$NES.y, tolerance = 0.08)
   expect_equal(log10(cmp$pvalue), log10(cmp$pval), tolerance = 1)
 })
+
+test_that("weighted GSEA accepts lightweight gene weights", {
+  set.seed(99)
+  stats <- sort(rnorm(200), decreasing = TRUE)
+  names(stats) <- paste0("Gene", seq_along(stats))
+  gene_sets <- list(
+    Top = names(stats)[1:20],
+    Mixed = names(stats)[c(10:19, 120:129)]
+  )
+  weight <- setNames(rep(1, length(stats)), names(stats))
+  weight[names(stats)[1:20]] <- 2
+
+  res <- gsea(
+    geneList = stats,
+    gene_sets = gene_sets,
+    weight = weight,
+    nPerm = 50,
+    method = "sample",
+    verbose = FALSE
+  )
+
+  expect_true(is.data.frame(res))
+  expect_true(all(c("ID", "enrichmentScore", "pvalue") %in% colnames(res)))
+  expect_true("Top" %in% res$ID)
+})
