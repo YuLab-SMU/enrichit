@@ -96,8 +96,3 @@ These objects are intended to support a clean separation of concerns across the 
 - **Computation first**: this package prioritizes fast and robust numerical routines over plot helpers.
 - **Decoupled architecture**: integration layers, propagation layers, and enrichment layers are exposed separately where useful.
 - **Stable downstream interface**: explanation helpers return standard tables so that plotting logic can evolve independently in downstream packages.
-
-## Notes
-
-- The multilevel GSEA algorithm is derived from the `fgsea` package.
-- Weighted ORA depends on `BiasedUrn`.

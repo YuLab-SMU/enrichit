@@ -201,3 +201,61 @@ test_that("weighted GSEA accepts lightweight gene weights", {
   expect_true(all(c("ID", "enrichmentScore", "pvalue") %in% colnames(res)))
   expect_true("Top" %in% res$ID)
 })
+
+test_that("gsea_gson sorts the input gene list and keeps pathway descriptions", {
+  skip_if_not_installed("gson")
+
+  gsid2gene <- data.frame(
+    gsid = c("Top", "Top", "Bottom", "Bottom"),
+    gene = c("Gene1", "Gene2", "Gene5", "Gene6"),
+    stringsAsFactors = FALSE
+  )
+  gsid2name <- data.frame(
+    gsid = c("Top", "Bottom"),
+    name = c("Top pathway", "Bottom pathway"),
+    stringsAsFactors = FALSE
+  )
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = gsid2name,
+    species = "test",
+    gsname = "test",
+    version = "test",
+    accessed_date = as.character(Sys.Date()),
+    keytype = "SYMBOL"
+  )
+
+  stats <- c(Gene4 = 0.1, Gene1 = 3, Gene6 = -2, Gene2 = 2, Gene5 = -1)
+  weight <- c(Gene1 = 2, Gene2 = 2, Gene4 = 1, Gene5 = 1, Gene6 = 1)
+
+  res <- gsea_gson(
+    geneList = stats,
+    gson = gson_obj,
+    weight = weight,
+    pvalueCutoff = 1,
+    minGSSize = 1,
+    maxGSSize = 10,
+    method = "sample",
+    nPerm = 30,
+    verbose = FALSE
+  )
+
+  expect_s4_class(res, "gseaResult")
+  expect_equal(names(res@geneList), names(sort(stats, decreasing = TRUE)))
+  expect_equal(unname(res@geneList), unname(sort(stats, decreasing = TRUE)))
+  expect_equal(res@result$Description[match("Top", res@result$ID)], "Top pathway")
+  expect_true(all(c("p.adjust", "qvalue", "core_enrichment") %in% colnames(res@result)))
+})
+
+test_that("gseaScores returns signed enrichment scores and fortify output", {
+  geneList <- c(A = 4, B = 3, C = 1, D = -2, E = -4)
+
+  expect_gt(gseaScores(geneList, c("A", "B")), 0)
+  expect_lt(gseaScores(geneList, c("D", "E")), 0)
+  expect_equal(gseaScores(geneList, character(0)), 0)
+
+  running <- gseaScores(geneList, c("A", "B"), fortify = TRUE)
+  expect_true(is.data.frame(running))
+  expect_equal(nrow(running), length(geneList))
+  expect_true(all(c("x", "runningScore", "position") %in% colnames(running)))
+})

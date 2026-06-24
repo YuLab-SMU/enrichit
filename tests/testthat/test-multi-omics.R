@@ -196,3 +196,95 @@ test_that("harmonize_ids and select_features_for_ora keep the workflow lightweig
   expect_equal(ora_input$gene, "G1")
   expect_equal(ora_input$universe, c("G1", "G2"))
 })
+
+test_that("get_omics_contribution extracts pathway-level source statistics", {
+  agg <- structure(
+    list(
+      input_type = "pvalue",
+      feature_type = "gene",
+      feature_id = c("GeneA", "GeneB", "GeneC"),
+      score = c(GeneA = 4, GeneB = 2, GeneC = 1),
+      pvalue = c(GeneA = 1e-4, GeneB = 1e-2, GeneC = 0.2),
+      original_matrix = matrix(
+        c(1e-4, 1e-2,
+          1e-2, 0.2,
+          0.2, 0.3),
+        nrow = 3,
+        byrow = TRUE,
+        dimnames = list(c("GeneA", "GeneB", "GeneC"), c("rna", "prot"))
+      )
+    ),
+    class = "omics_aggregated"
+  )
+
+  res_df <- data.frame(
+    ID = c("Path1", "Path2"),
+    Description = c("Path 1", "Path 2"),
+    pvalue = c(0.001, 0.2),
+    p.adjust = c(0.002, 0.2),
+    qvalue = c(0.002, 0.2),
+    geneID = c("GeneA/GeneB", "GeneC"),
+    Count = c(2, 1),
+    stringsAsFactors = FALSE
+  )
+  res <- make_enrich_result_for_test(res_df, pvalue_cutoff = 1)
+
+  contrib <- get_omics_contribution(res, agg, pathway_id = "Path1")
+
+  expect_true(is.data.frame(contrib))
+  expect_equal(contrib$Feature, c("GeneA", "GeneB"))
+  expect_true(all(c("rna", "prot", "Aggregated_Score", "Aggregated_Pvalue") %in% colnames(contrib)))
+  expect_equal(contrib$Aggregated_Score, c(4, 2))
+})
+
+test_that("classify_omics_pattern labels merged pathways by single-omics support", {
+  merged_df <- data.frame(
+    ID = c("PathEnhanced", "PathRNA", "PathShared", "PathNS"),
+    Description = c("Enhanced", "RNA only", "Shared", "Not sig"),
+    pvalue = c(0.01, 0.01, 0.01, 0.2),
+    p.adjust = c(0.01, 0.01, 0.01, 0.2),
+    qvalue = c(0.01, 0.01, 0.01, 0.2),
+    geneID = c("GeneA", "GeneB", "GeneC", "GeneD"),
+    Count = c(1, 1, 1, 1),
+    stringsAsFactors = FALSE
+  )
+  rna_df <- data.frame(
+    ID = c("PathRNA", "PathShared"),
+    Description = c("RNA only", "Shared"),
+    pvalue = c(0.01, 0.02),
+    p.adjust = c(0.01, 0.02),
+    qvalue = c(0.01, 0.02),
+    geneID = c("GeneB", "GeneC"),
+    Count = c(1, 1),
+    stringsAsFactors = FALSE
+  )
+  prot_df <- data.frame(
+    ID = c("PathShared"),
+    Description = c("Shared"),
+    pvalue = c(0.03),
+    p.adjust = c(0.03),
+    qvalue = c(0.03),
+    geneID = c("GeneC"),
+    Count = c(1),
+    stringsAsFactors = FALSE
+  )
+
+  merged <- make_enrich_result_for_test(merged_df, pvalue_cutoff = 1)
+  rna <- make_enrich_result_for_test(rna_df, pvalue_cutoff = 1)
+  prot <- make_enrich_result_for_test(prot_df, pvalue_cutoff = 1)
+
+  classified <- classify_omics_pattern(
+    merged_res = merged,
+    single_res = list(rna = rna, prot = prot),
+    p_cutoff = 0.05,
+    by = "p.adjust"
+  )
+
+  out <- classified@result$Omics_Pattern
+  names(out) <- classified@result$ID
+
+  expect_equal(unname(out["PathEnhanced"]), "Enhanced (1+1>2)")
+  expect_equal(unname(out["PathRNA"]), "rna-Specific")
+  expect_equal(unname(out["PathShared"]), "Shared")
+  expect_equal(unname(out["PathNS"]), "Not Significant")
+})
