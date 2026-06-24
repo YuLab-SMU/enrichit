@@ -16,7 +16,7 @@ geneInCategory(x)
 geneInCategory generic
 }
 \examples{
-\donttest{
+\dontrun{
 data(geneList, package="DOSE")
 de <- names(geneList)[1:100]
 x <- DOSE::enrichDO(de)
