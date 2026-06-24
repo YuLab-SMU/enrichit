@@ -1,7 +1,17 @@
 # enrichit 0.1.6
 
++ extend multi-omics integration with pathway-level and topology-level workflows (2026-06-24, Wed)
+    - add `aggregate_enrichment()` for multi-omics Late Fusion at the pathway level by aggregating multiple `enrichResult`/`gseaResult` objects
+    - support correlation-aware p-value aggregation with `method = "brown"` in `aggregate_omics()`
+    - support `method = "weighted_mean"` in `aggregate_omics()` for signed statistics with layer-specific weights
+    - add `mnsea()` and `mnsea_gson()` for multi-layer network-based enrichment
+    - add `prepare_multilayer_network()`, `propagate_multilayer()`, and `collapse_multilayer_scores()` for the multi-layer propagation pipeline
+    - add `mnseaResult` to store multi-layer diffusion results, collapsed scores, layer weights, and cached explanation tables
+    - precompute pathway-level and feature-level explanation caches inside `mnseaResult`
+    - add `get_mnsea_contribution()` and `extract_mnsea_subnetwork()` for explanation-ready data extraction
 + add `aggregate_omics()`, `harmonize_ids()` and `select_features_for_ora()` to support Multi-omics Early Integration
     - add `conflict_policy` parameter ("keep_all", "strict", "penalty") to handle directional conflicts in signed statistics (2026-06-23, Tue)
+    - support early fusion before `ora()`, `gsea()`, and `nsea()` through a decoupled aggregation layer
 + add `get_omics_contribution()` and `classify_omics_pattern()` for Multi-omics contribution tracing
 + implement Weighted Enrichment Analysis (2026-06-23, Tue)
     - add `weight` parameter to `ora()`, `ora_gson()`, `gsea()`, and `gsea_gson()`

@@ -1,6 +1,8 @@
 # enrichit: C++ Implementations of Functional Enrichment Analysis
 
-The `enrichit` package provides fast, efficient, and lightweight implementations of common functional enrichment analysis methods, including **Over-Representation Analysis (ORA)** and **Gene Set Enrichment Analysis (GSEA)**. The core algorithms are implemented in C++ using `Rcpp` to ensure high performance, making it suitable for analyzing large datasets or running simulations.
+`enrichit` is part of the `clusterProfiler` family, serving as the underlying algorithm implementation layer. It focuses on fast core computation, standardized result objects, and reusable data-preparation layers for downstream visualization packages such as `enrichplot`.
+
+The package now covers not only classical enrichment workflows such as **ORA** and **GSEA**, but also **weighted enrichment**, **network propagation-based enrichment**, **multi-omics early/late fusion**, **multi-layer topology fusion**, and **explanation-ready data extraction**.
 
 ## Installation
 
@@ -11,62 +13,91 @@ You can install the development version of `enrichit` from GitHub using `devtool
 devtools::install_github("YuLab-SMU/enrichit")
 ```
 
-## Features
+## Scope
 
-- **High Performance**: Core calculations are written in C++.
-- **ORA**: Standard hypergeometric test for over-representation analysis.
-- **GSEA**: 
-  - **Multilevel**: Efficient p-value estimation for high-significance results (similar to `fgsea`).
-  - **Permutation**: Standard permutation-based p-value calculation.
-  - **Adaptive**: Adaptive permutation approach.
-- **GSON Support**: Native support for `GSON` objects for gene set management.
-- **Standardized Output**: Returns `enrichResult` and `gseaResult` objects compatible with the `clusterProfiler` ecosystem.
+`enrichit` is designed around four layers:
 
-## Usage
+- **Core enrichment engines**: ORA, GSEA, weighted ORA/GSEA, and GSON-aware variants.
+- **Network-aware enrichment**: single-layer `nsea()` and multi-layer `mnsea()` workflows based on Random Walk with Restart.
+- **Multi-omics integration**: early fusion at the feature level and late fusion at the pathway level.
+- **Explanation-ready outputs**: contribution tables and topology-aware extraction helpers prepared for visualization in `enrichplot`.
 
-### Over-Representation Analysis (ORA)
+## Feature Map
 
-```r
-library(enrichit)
+- **High performance core**: key algorithms are implemented in `C++` via `Rcpp`, with sparse network propagation powered by `RcppEigen`.
+- **ORA**: standard hypergeometric ORA with optional weighted ORA through Wallenius' noncentral hypergeometric distribution.
+- **GSEA**: multilevel, permutation, and adaptive strategies for ranked enrichment analysis.
+- **GSON support**: native `ora_gson()` and `gsea_gson()` interfaces for structured gene set collections.
+- **NSEA**: `nsea()` and `nsea_gson()` for network-ranked enrichment on a single graph, including `mode = "signed"` for bidirectional propagation.
+- **Multi-layer topology fusion**: `mnsea()` and `mnsea_gson()` for multiplex or heterogeneous network propagation across multiple layers.
+- **Multi-omics early fusion**: `aggregate_omics()`, `harmonize_ids()`, and `select_features_for_ora()` for feature-level integration before enrichment.
+- **Multi-omics late fusion**: `aggregate_enrichment()` for pathway-level aggregation of multiple enrichment results.
+- **Contribution tracing**: `get_omics_contribution()`, `classify_omics_pattern()`, and `get_mnsea_contribution()` for explanation-oriented summaries.
+- **Topology-aware extraction**: `extract_mnsea_subnetwork()` for pathway-specific node/edge tables that can be passed to downstream visualization packages.
+- **Bayesian compression**: `bayes_enrich()` and `bayes_summary()` for posterior-based term prioritization.
 
-# Example gene sets
-gene_sets <- list(
-  pathway1 = paste0("Gene", 1:50),
-  pathway2 = paste0("Gene", 51:100)
-)
+## Main APIs
 
-# Define a universe and a list of significant genes
-universe <- paste0("Gene", 1:1000)
-sig_genes <- paste0("Gene", 1:20) # Significant genes
+### Classical enrichment
 
-# Run ORA
-ora_res <- ora(gene = sig_genes, 
-               gene_sets = gene_sets, 
-               universe = universe)
+- `ora()`, `ora_gson()`
+- `gsea()`, `gsea_gson()`
+- `gseaScores()`
 
-print(ora_res)
-```
+### Weighted enrichment
 
-### Gene Set Enrichment Analysis (GSEA)
+- `ora(..., weight = )`
+- `ora_gson(..., weight = )`
+- `gsea(..., weight = )`
+- `gsea_gson(..., weight = )`
 
-```r
-library(enrichit)
+### Network-aware enrichment
 
-# Generate a ranked gene list
-set.seed(123)
-geneList <- sort(rnorm(1000), decreasing = TRUE)
-names(geneList) <- paste0("Gene", 1:1000)
+- `prepare_network()`
+- `nsea()`, `nsea_gson()`
+- `prepare_multilayer_network()`
+- `propagate_multilayer()`
+- `collapse_multilayer_scores()`
+- `mnsea()`, `mnsea_gson()`
 
-# Define gene sets
-gene_sets <- list(
-  pathway1 = paste0("Gene", 1:50),  # Enriched at top
-  pathway2 = paste0("Gene", 951:1000) # Enriched at bottom
-)
+### Multi-omics integration
 
-# Run GSEA
-gsea_res <- gsea(geneList = geneList, 
-                 gene_sets = gene_sets, 
-                 method = "multilevel")
+- `aggregate_omics()`
+- `harmonize_ids()`
+- `select_features_for_ora()`
+- `aggregate_enrichment()`
 
-print(gsea_res)
-```
+### Explanation helpers
+
+- `get_omics_contribution()`
+- `classify_omics_pattern()`
+- `get_mnsea_contribution()`
+- `extract_mnsea_subnetwork()`
+
+## Result Objects
+
+The package provides the standard enrichment result object model used by the `clusterProfiler` family:
+
+- `enrichResult` for ORA-like workflows
+- `gseaResult` for ranked enrichment workflows
+- `nseaResult` for single-network propagation plus enrichment
+- `mnseaResult` for multi-layer propagation, collapsed scores, and cached explanation tables
+
+These objects are intended to support a clean separation of concerns across the `clusterProfiler` family:
+
+- `enrichit` handles core computation, algorithm implementation, and explanation-ready data preparation
+- `clusterProfiler` provides high-level biological interpretation workflows and general enrichment analysis interfaces
+- `enrichplot` handles visualization
+- `gson` provides a structured gene set resource layer for managing and exchanging gene set collections across the family
+- knowledge-base-oriented downstream packages such as `DOSE`, `ReactomePA`, `meshes`, and `MicrobiomeProfiler` provide domain-specific annotation and interpretation layers
+
+## Design Notes
+
+- **Computation first**: this package prioritizes fast and robust numerical routines over plot helpers.
+- **Decoupled architecture**: integration layers, propagation layers, and enrichment layers are exposed separately where useful.
+- **Stable downstream interface**: explanation helpers return standard tables so that plotting logic can evolve independently in downstream packages.
+
+## Notes
+
+- The multilevel GSEA algorithm is derived from the `fgsea` package.
+- Weighted ORA depends on `BiasedUrn`.
