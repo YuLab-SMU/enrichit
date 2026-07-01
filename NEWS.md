@@ -1,4 +1,4 @@
-# enrichit 0.1.6
+# enrichit 0.2.0
 
 + extend multi-omics integration with pathway-level and topology-level workflows (2026-06-24, Wed)
     - add `aggregate_enrichment()` for multi-omics Late Fusion at the pathway level by aggregating multiple `enrichResult`/`gseaResult` objects
