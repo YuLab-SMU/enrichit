@@ -1,3 +1,7 @@
+# enrichit 0.2.1
+
++ fix `gsea()` to intersect gene sets with `names(geneList)` before applying `minGSSize`/`maxGSSize`, so the size filter constrains the actual overlap rather than the raw gene set size; also guard `gsea_gson()` against `NA` pvalue rows leaking into the result table (2026-08-04, Tue, clusterProfiler#824)
+
 # enrichit 0.2.0
 
 + extend multi-omics integration with pathway-level and topology-level workflows (2026-06-24, Wed)

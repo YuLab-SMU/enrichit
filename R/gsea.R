@@ -98,6 +98,11 @@ gsea <- function(geneList, gene_sets,
         seed <- sample.int(1e9, 1)
     }
     
+    # Intersect with geneList to get overlapping genes;
+    # minGSSize/maxGSSize should constrain the overlap, not the raw set size
+    # see https://github.com/YuLab-SMU/clusterProfiler/issues/824
+    gene_sets <- lapply(gene_sets, intersect, names(geneList))
+
     # Filter by size
     idx <- get_geneSet_index(gene_sets, minGSSize, maxGSSize)
     if (sum(idx) == 0) {
@@ -346,7 +351,7 @@ gsea_gson <- function(geneList,
     
     # Filter by pvalueCutoff
     if (!is.null(pvalueCutoff)) {
-        gsea_res <- gsea_res[gsea_res$pvalue <= pvalueCutoff, ]
+        gsea_res <- gsea_res[!is.na(gsea_res$pvalue) & gsea_res$pvalue <= pvalueCutoff, ]
     }
     
     if (nrow(gsea_res) == 0) {
