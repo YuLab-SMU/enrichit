@@ -37,3 +37,4 @@
 \description{
 Common parameters for enrichit functions
 }
+\keyword{internal}

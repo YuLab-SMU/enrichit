@@ -194,6 +194,7 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
 #' @param minPerm Minimum permutations for adaptive mode.
 #' @param maxPerm Maximum permutations for adaptive mode.
 #' @param pvalThreshold P-value threshold for early stopping.
+#' @keywords internal
 #' @name enrichit_params
 NULL
 
