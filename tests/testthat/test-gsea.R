@@ -259,3 +259,92 @@ test_that("gseaScores returns signed enrichment scores and fortify output", {
   expect_equal(nrow(running), length(geneList))
   expect_true(all(c("x", "runningScore", "position") %in% colnames(running)))
 })
+
+test_that("gsea multilevel is reproducible with a fixed seed", {
+  stats <- sort(rnorm(500), decreasing = TRUE)
+  names(stats) <- paste0("Gene", 1:500)
+  gene_sets <- list(
+    Top = names(stats)[1:30],
+    Bottom = names(stats)[471:500],
+    Mid = names(stats)[sample(200:300, 30)]
+  )
+
+  r1 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+             nPermSimple = 200, seed = 42, verbose = FALSE)
+  r2 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+             nPermSimple = 200, seed = 42, verbose = FALSE)
+  expect_identical(r1, r2)
+
+  # seed = TRUE uses a fixed default seed and is reproducible too
+  r3 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+             nPermSimple = 200, seed = TRUE, verbose = FALSE)
+  r4 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+             nPermSimple = 200, seed = TRUE, verbose = FALSE)
+  expect_identical(r3, r4)
+})
+
+test_that("gsea_gson forwards seed and is reproducible", {
+  gsid2gene <- data.frame(
+    gsid = rep(c("set1", "set2", "set3"), each = 30),
+    gene = c(paste0("Gene", 1:30), paste0("Gene", 471:500), paste0("Gene", 200:229))
+  )
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = data.frame(gsid = c("set1", "set2", "set3"), name = c("set1", "set2", "set3")),
+    species = "test", gsname = "test", version = "test",
+    accessed_date = as.character(Sys.Date()), keytype = "SYMBOL"
+  )
+  stats <- sort(rnorm(500), decreasing = TRUE)
+  names(stats) <- paste0("Gene", 1:500)
+
+  e1 <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                  nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
+                  maxGSSize = 100, verbose = FALSE)
+  e2 <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                  nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
+                  maxGSSize = 100, verbose = FALSE)
+  expect_identical(e1@result, e2@result)
+})
+
+test_that("gsea_gson pvalueCutoff filters on both pvalue and p.adjust", {
+  set.seed(1)
+  stats <- sort(rnorm(800), decreasing = TRUE)
+  names(stats) <- paste0("Gene", 1:800)
+  # ~40 random gene sets: some will be weakly enriched, producing rows whose
+  # raw pvalue is below 0.05 but whose BH-adjusted pvalue is above it.
+  gene_sets <- lapply(1:40, function(i) names(stats)[sample(1:800, 40)])
+  names(gene_sets) <- paste0("set", 1:40)
+
+  r <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+            nPermSimple = 500, seed = 1, verbose = FALSE)
+
+  gsid2gene <- do.call(rbind, lapply(names(gene_sets), function(s)
+    data.frame(gsid = s, gene = gene_sets[[s]], stringsAsFactors = FALSE)))
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = data.frame(gsid = names(gene_sets), name = names(gene_sets)),
+    species = "test", gsname = "test", version = "test",
+    accessed_date = as.character(Sys.Date()), keytype = "SYMBOL"
+  )
+
+  full <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                    nPermSimple = 500, seed = 1, pvalueCutoff = 1,
+                    minGSSize = 1, maxGSSize = 800, verbose = FALSE)
+  filt <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                    nPermSimple = 500, seed = 1, pvalueCutoff = 0.05,
+                    minGSSize = 1, maxGSSize = 800, verbose = FALSE)
+
+  if (!is.null(full) && nrow(full@result) > 0) {
+    # rows that pass both cutoffs, computed from the full (cutoff = 1) result
+    expected <- full@result[full@result$pvalue <= 0.05 &
+                              full@result$p.adjust <= 0.05, ]
+    if (is.null(filt)) {
+      expect_equal(nrow(expected), 0)
+    } else {
+      # invariant: filt must contain exactly the rows passing both cutoffs
+      expect_setequal(filt@result$ID, expected$ID)
+      expect_true(all(filt@result$pvalue <= 0.05))
+      expect_true(all(filt@result$p.adjust <= 0.05))
+    }
+  }
+})

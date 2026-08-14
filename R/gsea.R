@@ -6,7 +6,12 @@
 #' @param weight A named numeric vector of weights for genes. The names should match the names of geneList. If provided, the geneList will be multiplied by the weight and resorted before GSEA (default: NULL).
 #' @param eps Epsilon for multilevel methods (default: 1e-10). Sets the smallest p-value that can be estimated.
 #' @param sampleSize Sample size for multilevel methods (default: 101).
-#' @param seed Random seed for reproducibility (default: FALSE). If FALSE, a random seed is generated.
+#' @param seed Random seed for reproducibility (default: FALSE). Set to a number to make
+#'   the result reproducible; set to TRUE to use a fixed default seed. If FALSE (default),
+#'   a seed is drawn from R's random number generator on each run, so results may vary
+#'   between runs. Note that the C++ engine uses its own RNG seeded with this value:
+#'   passing an explicit numeric seed (or calling \code{set.seed()} before \code{gsea()}
+#'   when \code{seed = FALSE}) makes the result reproducible.
 #' @param nPermSimple Number of permutations for the simple method (default: 1000).
 #' @param scoreType Type of enrichment score calculation: "std", "pos", "neg" (default: "std").
 #'
@@ -94,7 +99,14 @@ gsea <- function(geneList, gene_sets,
     geneList <- prepared$geneList
     multilevelRanks <- prepared$multilevelRanks
     sampleSize <- normalize_multilevel_sample_size(sampleSize)
-    if (isFALSE(seed)) {
+    # seed semantics: a numeric (or TRUE -> fixed default seed) makes the result
+    # reproducible; FALSE draws a fresh seed from R's RNG on each run, so results
+    # may differ between runs (inherent to permutation-based GSEA). Note that the
+    # C++ engine seeds its own RNG with this value, so passing an explicit seed
+    # (or set.seed() before the call when seed = FALSE) fixes the result.
+    if (isTRUE(seed)) {
+        seed <- 12345L  # fixed default seed, consistent with the C++ default
+    } else if (isFALSE(seed)) {
         seed <- sample.int(1e9, 1)
     }
     
@@ -264,6 +276,11 @@ scale_fgsea_ranks <- function(geneList, exponent) {
 #' @title gsea_gson
 #' @inheritParams enrichit_params
 #' @param weight A named numeric vector of weights for genes.
+#' @param seed Random seed for reproducibility. See \code{gsea()} for details
+#'   (default: FALSE).
+#' @param pvalueCutoff P-value cutoff applied to both the raw p-value and the
+#'   adjusted p-value (\code{p.adjust}), consistent with the historical
+#'   clusterProfiler/DOSE behavior (default: 0.05).
 #' @param ... Additional parameters passed to gsea()
 #' @return gseaResult object
 #' @author Guangchuang Yu
@@ -282,6 +299,7 @@ gsea_gson <- function(geneList,
                  minPerm = 101,
                  maxPerm = 100000,
                  pvalThreshold = 0.1,
+                 seed = FALSE,
                  verbose = TRUE,
                  ...) {
 
@@ -323,6 +341,7 @@ gsea_gson <- function(geneList,
                      minPerm = minPerm,
                      maxPerm = maxPerm,
                      pvalThreshold = pvalThreshold,
+                     seed = seed,
                      verbose = verbose,
                      ...)
                      
@@ -349,9 +368,14 @@ gsea_gson <- function(geneList,
     # Calculate qvalue
     gsea_res$qvalue <- calculate_qvalue(gsea_res$pvalue)
     
-    # Filter by pvalueCutoff
+    # Filter by pvalueCutoff: both the raw p-value and the adjusted p-value
+    # must pass the cutoff, matching the historical DOSE/clusterProfiler
+    # behavior (see DOSE::GSEA_fgsea: res[res$pvalue <= pvalueCutoff, ] followed
+    # by res[res$p.adjust <= pvalueCutoff, ]).
     if (!is.null(pvalueCutoff)) {
-        gsea_res <- gsea_res[!is.na(gsea_res$pvalue) & gsea_res$pvalue <= pvalueCutoff, ]
+        gsea_res <- gsea_res[!is.na(gsea_res$pvalue), ]
+        gsea_res <- gsea_res[gsea_res$pvalue <= pvalueCutoff, ]
+        gsea_res <- gsea_res[gsea_res$p.adjust <= pvalueCutoff, ]
     }
     
     if (nrow(gsea_res) == 0) {

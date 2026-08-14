@@ -1,3 +1,12 @@
+# enrichit 0.2.2
+
++ align `gsea_gson()` p-value filtering with the historical clusterProfiler/DOSE behavior: `pvalueCutoff` now requires both the raw p-value and the adjusted p-value (`p.adjust`) to pass the cutoff (previously only the raw p-value was filtered), restoring significant-pathway counts comparable to clusterProfiler <= 4.18.x (2026-08-14, Fri)
++ clarify and harden the `seed` interface of GSEA for reproducibility (2026-08-14, Thu)
+    - `gsea()` now treats `seed = TRUE` as a fixed default seed (consistent with the C++ default) instead of silently coercing it to the integer `1`
+    - `gsea_gson()` now exposes an explicit `seed` argument (previously only reachable through `...`) and forwards it to `gsea()`
+    - document that `seed = FALSE` (default) draws a fresh seed from R's RNG on each run, so results may vary between runs, while a numeric seed (or `set.seed()` before the call) makes the result reproducible; the C++ engine seeds its own RNG with this value
+    - add regression tests asserting identical results across runs with a fixed seed
+
 # enrichit 0.2.1
 
 + fix `gsea()` to intersect gene sets with `names(geneList)` before applying `minGSSize`/`maxGSSize`, so the size filter constrains the actual overlap rather than the raw gene set size; also guard `gsea_gson()` against `NA` pvalue rows leaking into the result table (2026-08-04, Tue, clusterProfiler#824)

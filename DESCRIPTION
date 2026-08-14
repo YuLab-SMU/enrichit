@@ -1,6 +1,6 @@
 Package: enrichit
 Title: 'C++' Implementations of Functional Enrichment Analysis
-Version: 0.2.1
+Version: 0.2.2
 Authors@R: person(given = "Guangchuang", family = "Yu",
                email = "guangchuangyu@gmail.com", role  = c("aut", "cre"))
 Maintainer: Guangchuang Yu <guangchuangyu@gmail.com>
@@ -41,4 +41,4 @@ Suggests:
 Encoding: UTF-8
 URL: https://yulab-smu.top/biomedical-knowledge-mining-book/
 Roxygen: list(markdown = TRUE)
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.0

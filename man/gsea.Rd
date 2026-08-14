@@ -54,7 +54,12 @@ gsea(
 
 \item{sampleSize}{Sample size for multilevel methods (default: 101).}
 
-\item{seed}{Random seed for reproducibility (default: FALSE). If FALSE, a random seed is generated.}
+\item{seed}{Random seed for reproducibility (default: FALSE). Set to a number to make
+the result reproducible; set to TRUE to use a fixed default seed. If FALSE (default),
+a seed is drawn from R's random number generator on each run, so results may vary
+between runs. Note that the C++ engine uses its own RNG seeded with this value:
+passing an explicit numeric seed (or calling \code{set.seed()} before \code{gsea()}
+when \code{seed = FALSE}) makes the result reproducible.}
 
 \item{nPermSimple}{Number of permutations for the simple method (default: 1000).}
 

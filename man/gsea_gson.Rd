@@ -19,6 +19,7 @@ gsea_gson(
   minPerm = 101,
   maxPerm = 1e+05,
   pvalThreshold = 0.1,
+  seed = FALSE,
   verbose = TRUE,
   ...
 )
@@ -38,7 +39,9 @@ gsea_gson(
 
 \item{maxGSSize}{maximal size of each geneSet for analyzing}
 
-\item{pvalueCutoff}{P-value cutoff.}
+\item{pvalueCutoff}{P-value cutoff applied to both the raw p-value and the
+adjusted p-value (\code{p.adjust}), consistent with the historical
+clusterProfiler/DOSE behavior (default: 0.05).}
 
 \item{pAdjustMethod}{P-value adjustment method (e.g., "BH").}
 
@@ -51,6 +54,9 @@ gsea_gson(
 \item{maxPerm}{Maximum permutations for adaptive mode.}
 
 \item{pvalThreshold}{P-value threshold for early stopping.}
+
+\item{seed}{Random seed for reproducibility. See \code{gsea()} for details
+(default: FALSE).}
 
 \item{verbose}{Logical. Print progress messages.}
 
