@@ -21,6 +21,10 @@ gsea_scores_cpp <- function(stats, in_set, exponent) {
     .Call(`_enrichit_gsea_scores_cpp`, stats, in_set, exponent)
 }
 
+gsea_es_all_cpp <- function(stats, gene_sets, exponent, scoreType) {
+    .Call(`_enrichit_gsea_es_all_cpp`, stats, gene_sets, exponent, scoreType)
+}
+
 #' Random Walk with Restart using Eigen Sparse Matrix
 #'
 #' @param A column-normalized sparse matrix

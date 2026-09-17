@@ -1,3 +1,23 @@
+# enrichit 0.2.3
+
++ calibrate NSEA significance testing by switching the default to a whole-pipeline permutation null instead of GSEA's label-permutation test (2026-08-23, Sun)
+    - the legacy `nsea()`/`nsea_gson()` pipeline ran GSEA's label-permutation test on the network-diffused scores; because network diffusion induces strong autocorrelation between neighbouring genes' scores, that test violates the exchangeability assumption of GSEA's permutation null and produces anti-conservative p-values (empirically ~2.5x the nominal false-positive rate)
+    - `significance = "whole_pipeline"` (new default) builds the null distribution of the enrichment score by re-running the *entire* pipeline under the null: permute gene labels -> re-diffuse over the network with RWR -> recompute the enrichment score; p-values and NES are then derived from this null, automatically accounting for the smoothing induced by diffusion
+    - `significance = "internal"` retains the legacy behaviour (GSEA's internal label-permutation test on the diffused scores), kept for comparison/debugging
++ add `significance`, `nPerm`, `seed` and `exponent` arguments to `nsea()` and `nsea_gson()`; expose `pvalueCutoff` and `pAdjustMethod` in `nsea_gson()`
+    - `nPerm` (default 1000) sets the number of whole-pipeline permutations; the smallest estimable p-value is `1/(nPerm + 1)`
+    - `seed` (default NULL) makes the whole-pipeline null reproducible; set a numeric seed for deterministic results
+    - `exponent` (default 1) controls the weight of each step of the running enrichment score
+    - `nsea_gson()` now applies `pvalueCutoff` to both the raw and the adjusted p-value (matching `gsea_gson()`), and accepts `pAdjustMethod`
++ extend `prepare_network()` to accept a `mechgraph` object as well as an edge-list `data.frame`/`matrix` or a sparse matrix
+    - the `mechgraph` `edges` table must have `from`/`to` columns; a numeric `score` or `weight` column, when present, supplies the edge weight, otherwise unit weights are used
+    - the class is duck-typed by name, so `enrichit` does not hard-depend on the `mechgraph` package
++ add a fast C++ kernel `gsea_es_all_cpp()` that computes the classic weighted enrichment score for many gene sets at once from the hit positions only, making it cheap enough to evaluate on every whole-pipeline permutation
++ harden the NSEA internals
+    - robust node-name extraction guards against Matrix accessor quirks on serialized sparse matrices
+    - share single implementations of the RWR diffusion (`.nsea_diffuse()`) and TF-IDF specificity weighting (`.nsea_specific_weights()`); in "signed" mode positive and negative seeds are propagated in a single linear solve
++ add regression tests for whole-pipeline reproducibility and for p-value calibration on null data
+
 # enrichit 0.2.2
 
 + align `gsea_gson()` p-value filtering with the historical clusterProfiler/DOSE behavior: `pvalueCutoff` now requires both the raw p-value and the adjusted p-value (`p.adjust`) to pass the cutoff (previously only the raw p-value was filtered), restoring significant-pathway counts comparable to clusterProfiler <= 4.18.x (2026-08-14, Fri)

@@ -97,6 +97,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// gsea_es_all_cpp
+Rcpp::NumericVector gsea_es_all_cpp(const Rcpp::NumericVector& stats, const Rcpp::List& gene_sets, double exponent, std::string scoreType);
+RcppExport SEXP _enrichit_gsea_es_all_cpp(SEXP statsSEXP, SEXP gene_setsSEXP, SEXP exponentSEXP, SEXP scoreTypeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type stats(statsSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type gene_sets(gene_setsSEXP);
+    Rcpp::traits::input_parameter< double >::type exponent(exponentSEXP);
+    Rcpp::traits::input_parameter< std::string >::type scoreType(scoreTypeSEXP);
+    rcpp_result_gen = Rcpp::wrap(gsea_es_all_cpp(stats, gene_sets, exponent, scoreType));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rwr_eigen_cpp
 Rcpp::List rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
 RcppExport SEXP _enrichit_rwr_eigen_cpp(SEXP ASEXP, SEXP vSEXP, SEXP restartSEXP, SEXP thresholdSEXP, SEXP max_iterSEXP) {
@@ -119,6 +133,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_gsea_adaptive_cpp", (DL_FUNC) &_enrichit_gsea_adaptive_cpp, 9},
     {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 13},
     {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
+    {"_enrichit_gsea_es_all_cpp", (DL_FUNC) &_enrichit_gsea_es_all_cpp, 4},
     {"_enrichit_rwr_eigen_cpp", (DL_FUNC) &_enrichit_rwr_eigen_cpp, 5},
     {NULL, NULL, 0}
 };

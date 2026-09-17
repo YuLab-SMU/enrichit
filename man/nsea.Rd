@@ -15,6 +15,10 @@ nsea(
   maxGSSize = 500,
   threshold = 1e-09,
   maxIter = 100,
+  significance = c("whole_pipeline", "internal"),
+  nPerm = 1000,
+  seed = NULL,
+  exponent = 1,
   verbose = TRUE,
   ...
 )
@@ -40,9 +44,27 @@ nsea(
 
 \item{maxIter}{maximal number of RWR iterations (default is 100).}
 
+\item{significance}{character, one of "whole_pipeline" (default) or "internal".
+"whole_pipeline" computes p-values and NES from a permutation null that
+re-runs the full pipeline (permute gene labels -> re-diffuse -> recompute
+enrichment scores) and is statistically calibrated. "internal" runs GSEA's
+internal label-permutation test on the diffused scores; this is the legacy
+behaviour and is \strong{anti-conservative} (it ignores the correlation induced
+by network diffusion) — use it only for comparison/debugging.}
+
+\item{nPerm}{number of whole-pipeline permutations used to estimate p-values
+and NES (default: 1000). The smallest estimable p-value is 1/(nPerm + 1).}
+
+\item{seed}{random seed for the permutation null (default: NULL, use the
+current R RNG state). Set a numeric seed for reproducible results.}
+
+\item{exponent}{weight of each step in the enrichment score (default: 1).}
+
 \item{verbose}{logical, print messages.}
 
-\item{...}{other arguments passed to \code{gsea()}.}
+\item{...}{for \code{significance = "internal"}, other arguments passed to
+\code{gsea()} (e.g. \code{nPerm}, \code{method}, \code{nPermSimple}). For
+\code{significance = "whole_pipeline"} additional arguments are ignored.}
 }
 \value{
 A \code{nseaResult} object of NSEA results.

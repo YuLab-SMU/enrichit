@@ -7,7 +7,10 @@
 prepare_network(network, directed = FALSE, normalize = "column")
 }
 \arguments{
-\item{network}{edge list (data.frame with 2 or 3 columns) or sparse matrix.}
+\item{network}{edge list (data.frame with 2 or 3 columns), a sparse
+matrix, or a \code{mechgraph} object. For \code{mechgraph}, its \code{edges} table must
+have \code{from}/\code{to} columns; a numeric \code{score} or \code{weight} column, if
+present, is used as the edge weight, otherwise unit weights are used.}
 
 \item{directed}{logical, whether the network is directed. Default is FALSE.}
 

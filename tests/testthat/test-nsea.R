@@ -123,3 +123,70 @@ test_that("nsea_gson supports signed mode on a lightweight example", {
     expect_equal(res@result$Description[match("UpPath", res@result$ID)], "Up pathway")
     expect_equal(sort(names(res@diffusion_scores)), sort(unique(c(edges$from, edges$to))))
 })
+
+test_that("nsea whole-pipeline permutation is the default and reproducible", {
+    edges <- data.frame(
+        from = c("A", "A", "B", "C", "D", "E", "F"),
+        to = c("B", "C", "D", "D", "E", "F", "A"),
+        weight = rep(1, 7),
+        stringsAsFactors = FALSE
+    )
+    geneList <- c(A = 1.2, B = 0.8, D = -1.1, E = -0.7, F = 0.3)
+    geneList <- sort(geneList, decreasing = TRUE)
+    gene_sets <- list(UpPath = c("A", "B", "C"), DownPath = c("D", "E", "F"))
+
+    res1 <- nsea(geneList, edges, gene_sets, mode = "signed", p = 0.5,
+                 minGSSize = 1, maxGSSize = 10, nPerm = 100, seed = 123,
+                 verbose = FALSE)
+    res2 <- nsea(geneList, edges, gene_sets, mode = "signed", p = 0.5,
+                 minGSSize = 1, maxGSSize = 10, nPerm = 100, seed = 123,
+                 verbose = FALSE)
+
+    expect_s4_class(res1, "nseaResult")
+    expect_identical(res1@params$significance, "whole_pipeline")
+    expect_equal(res1@params$nPerm, 100L)
+    # reproducible
+    expect_identical(res1@result$pvalue, res2@result$pvalue)
+    # p-values within (0, 1]
+    expect_true(all(res1@result$pvalue > 0 & res1@result$pvalue <= 1))
+    # min p-value cannot go below the permutation resolution floor
+    expect_true(min(res1@result$pvalue) >= 1 / 101)
+    # NES finite and sign-consistent with ES
+    expect_true(all(is.finite(res1@result$NES)))
+    expect_equal(sign(res1@result$NES), sign(res1@result$enrichmentScore))
+})
+
+test_that("nsea_gson whole-pipeline mode reports calibrated p-values on null data", {
+    skip_if_not_installed("gson")
+    edges <- data.frame(
+        from = c("A", "A", "B", "C", "D", "E", "F"),
+        to = c("B", "C", "D", "D", "E", "F", "A"),
+        weight = rep(1, 7),
+        stringsAsFactors = FALSE
+    )
+    gsid2gene <- data.frame(
+        gsid = c("UpPath", "UpPath", "UpPath", "DownPath", "DownPath", "DownPath"),
+        gene = c("A", "B", "C", "D", "E", "F"),
+        stringsAsFactors = FALSE
+    )
+    gsid2name <- data.frame(
+        gsid = c("UpPath", "DownPath"),
+        name = c("Up pathway", "Down pathway"),
+        stringsAsFactors = FALSE
+    )
+    gson_obj <- gson::gson(
+        gsid2gene = gsid2gene, gsid2name = gsid2name,
+        species = "test", gsname = "test", version = "test",
+        accessed_date = as.character(Sys.Date()), keytype = "SYMBOL"
+    )
+    # scores with no structure relative to the sets -> p-values should be large
+    geneList <- setNames(rnorm(6), c("A", "B", "C", "D", "E", "F"))
+    geneList <- sort(geneList, decreasing = TRUE)
+    res <- nsea_gson(geneList, edges, gson_obj, mode = "signed", p = 0.5,
+                     minGSSize = 1, maxGSSize = 10, nPerm = 100, seed = 1,
+                     pvalueCutoff = 1, verbose = FALSE)
+    expect_s4_class(res, "nseaResult")
+    expect_true(all(res@result$pvalue > 0 & res@result$pvalue <= 1))
+    # on random data the p-values should not all be extreme
+    expect_true(mean(res@result$pvalue < 0.05) < 0.5)
+})
