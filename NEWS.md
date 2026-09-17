@@ -1,3 +1,10 @@
+# enrichit 0.2.4
+
++ stop emitting spurious `no package '<...>' was found` warnings when no input gene can be mapped (2026-09-17, Thu)
+    - `check_gene_id()` routed its informational notices through `yulab.utils::yulab_msg()`, which builds the package *citation banner* and expects a package name; it therefore called `packageDescription()` on the notice text itself, so every run with unmappable input emitted three warnings such as `no package '--> No gene can be mapped....' was found`
+    - the notices now go through `message()`, and `yulab.utils::yulab_msg()` is no longer imported
+    - the sample of expected gene IDs shown in the notice no longer contains `NA` when a gene set has fewer than 100 genes
+
 # enrichit 0.2.3
 
 + calibrate NSEA significance testing by switching the default to a whole-pipeline permutation null instead of GSEA's label-permutation test (2026-08-23, Sun)

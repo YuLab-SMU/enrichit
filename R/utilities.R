@@ -1,11 +1,14 @@
-#' @importFrom yulab.utils yulab_msg
+## These are informational notices, so they must go through `message()`.
+## `yulab.utils::yulab_msg()` is the citation-banner builder -- it takes a
+## package *name* and calls `packageDescription()` on it, so passing message
+## text through it makes R warn "no package '<message>' was found".
 check_gene_id <- function(gene, gsid2gene) {
     if (!any(gene %in% gsid2gene$gene)) {
-        yulab_msg("--> No gene can be mapped....")
-        sg <- unique(gsid2gene$gene[1:100])
+        message("--> No gene can be mapped....")
+        sg <- utils::head(unique(gsid2gene$gene), 100)
         sg <- sample(sg, min(length(sg), 6))
-        yulab_msg("--> Expected input gene ID: ", paste0(sg, collapse=','))
-        yulab_msg("--> return NULL...")
+        message("--> Expected input gene ID: ", paste0(sg, collapse=','))
+        message("--> return NULL...")
         return(FALSE)
     }
     return(TRUE)

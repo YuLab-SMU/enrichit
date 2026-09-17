@@ -83,5 +83,4 @@ importFrom(utils,
   str,
   tail
 )
-importFrom(yulab.utils,yulab_msg)
 useDynLib(enrichit, .registration = TRUE)
