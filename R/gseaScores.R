@@ -13,6 +13,13 @@
 #' @export
 #' @author Guangchuang Yu
 gseaScores <- function(geneList, geneSet, exponent=1, fortify=FALSE) {
+    if (!is.numeric(geneList) || is.null(names(geneList))) {
+        stop("geneList must be a named numeric vector")
+    }
+    if (any(!is.finite(geneList))) {
+        stop("Not all stats values are finite numbers")
+    }
+
     geneSet <- intersect(geneSet, names(geneList))
     
     if (length(geneSet) == 0) {
@@ -35,11 +42,18 @@ gseaScores <- function(geneList, geneSet, exponent=1, fortify=FALSE) {
     }
     
     # Calculate ES
-    # ES is the maximum deviation from zero
+    # ES is the maximum deviation from zero.
+    # `isTRUE()` keeps a non-finite running score from aborting with
+    # "missing value where TRUE/FALSE needed"; such a score has no maximum
+    # deviation, so NA is returned instead.
     max.ES <- max(res$runningScore)
     min.ES <- min(res$runningScore)
-    
-    if (abs(max.ES) > abs(min.ES)) {
+
+    if (!is.finite(max.ES) || !is.finite(min.ES)) {
+        return(NA_real_)
+    }
+
+    if (isTRUE(abs(max.ES) > abs(min.ES))) {
         return(max.ES)
     } else {
         return(min.ES)

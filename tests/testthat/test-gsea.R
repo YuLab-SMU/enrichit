@@ -348,3 +348,55 @@ test_that("gsea_gson pvalueCutoff filters on both pvalue and p.adjust", {
     }
   }
 })
+
+test_that("non-finite gene statistics are reported, not crashed on (#266, #513)", {
+    set.seed(1)
+    stats <- sort(rnorm(200), decreasing = TRUE)
+    names(stats) <- paste0("Gene", 1:200)
+    gsid2gene <- data.frame(
+        gsid = rep(c("set1", "set2"), each = 40),
+        gene = c(paste0("Gene", 1:40), paste0("Gene", 61:100))
+    )
+    gson_obj <- gson::gson(
+        gsid2gene = gsid2gene,
+        gsid2name = data.frame(gsid = c("set1", "set2"), name = c("set1", "set2")),
+        species = "test", gsname = "test", version = "test",
+        accessed_date = as.character(Sys.Date()), keytype = "SYMBOL"
+    )
+    run <- function(gl, verbose = FALSE) {
+        gsea_gson(geneList = gl, gson = gson_obj, method = "sample", nPerm = 100,
+                  pvalueCutoff = 1, minGSSize = 1, maxGSSize = 100, verbose = verbose)
+    }
+
+    # healthy input still works (gsea_gson returns a gseaResult, not a data.frame)
+    healthy <- run(stats)
+    expect_s4_class(healthy, "gseaResult")
+    expect_true(nrow(as.data.frame(healthy)) > 0)
+
+    # NA used to abort inside gsea_gson()'s sort check with
+    # "missing value where TRUE/FALSE needed", long before the finiteness check
+    stats_na <- stats
+    stats_na[5] <- NA
+    expect_error(run(stats_na), "finite")
+
+    stats_inf <- stats
+    stats_inf[5] <- Inf
+    expect_error(run(stats_inf), "finite")
+
+    # an unsorted list is still sorted automatically
+    expect_warning(run(sample(stats), verbose = TRUE), "not sorted")
+})
+
+test_that("gseaScores() rejects non-finite statistics instead of crashing", {
+    gl <- c(a = 3, b = 2, c = 1, d = -1, e = -2, f = -3)
+    expect_equal(gseaScores(gl, c("a", "c", "e")), 0.5)
+
+    gl_na <- gl
+    gl_na["b"] <- NA
+    expect_error(gseaScores(gl_na, c("a", "c", "e")), "finite")
+
+    gl_inf <- gl
+    gl_inf["a"] <- Inf
+    # used to be "missing value where TRUE/FALSE needed"
+    expect_error(gseaScores(gl_inf, c("a", "c", "e")), "finite")
+})

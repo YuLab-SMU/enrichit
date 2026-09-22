@@ -226,7 +226,7 @@ prepare_gsea_inputs <- function(geneList, scoreType, exponent) {
     if (any(!is.finite(geneList))) {
         stop("Not all stats values are finite numbers")
     }
-    if (is.unsorted(rev(geneList))) {
+    if (isTRUE(is.unsorted(rev(geneList)))) {
         warning("geneList is not sorted in descending order. Sorting it now.")
         geneList <- sort(geneList, decreasing = TRUE)
     }
@@ -307,8 +307,11 @@ gsea_gson <- function(geneList,
         stop("gson should be a GSON object")
     }
 
-    # Ensure geneList is sorted
-    if (is.unsorted(rev(geneList))) {
+    # Ensure geneList is sorted.
+    # `isTRUE()` matters: with NA/NaN in geneList `is.unsorted()` returns NA, and a
+    # bare `if (NA)` aborts with "missing value where TRUE/FALSE needed" *before*
+    # the finiteness check in prepare_gsea_inputs() can report the real problem.
+    if (isTRUE(is.unsorted(rev(geneList)))) {
         if (verbose) {
             warning("geneList is not sorted in descending order. Sorting it now.")
         }
