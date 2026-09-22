@@ -7,7 +7,7 @@
 ##'
 ##' Generic constructor for over-representation analysis results produced
 ##' by other tools.  The input must follow the canonical column schema
-##' documented in \code{\link{fortify}}; a minimal set of columns
+##' documented in \code{enrichplot::fortify()}; a minimal set of columns
 ##' (\code{ID}, \code{pvalue} and at least one of \code{geneID},
 ##' \code{Count} or \code{GeneRatio}) is required, the remaining canonical
 ##' columns are derived when possible.
