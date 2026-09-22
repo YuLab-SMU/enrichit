@@ -1,5 +1,6 @@
 # enrichit 0.2.4
 
++ add generic constructors `as_enrichResult()` / `as_gseaResult()`: build 'enrichit' result objects from result tables of external enrichment tools (enrichr, g:Profiler, WebGestalt, fgsea, ...), with canonical column aliases, ID de-duplication, p-value validation, derived statistics (`RichFactor` / `FoldEnrichment` / `zScore`) when the query and background are known, and missing GSEA detail columns recomputed via `gsea_leading_edge_details()` (2026-09-21, Sun)
 + stop emitting spurious `no package '<...>' was found` warnings when no input gene can be mapped (2026-09-17, Thu)
     - `check_gene_id()` routed its informational notices through `yulab.utils::yulab_msg()`, which builds the package *citation banner* and expects a package name; it therefore called `packageDescription()` on the notice text itself, so every run with unmappable input emitted three warnings such as `no package '--> No gene can be mapped....' was found`
     - the notices now go through `message()`, and `yulab.utils::yulab_msg()` is no longer imported
