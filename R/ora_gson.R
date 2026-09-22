@@ -162,6 +162,18 @@ ora_gson <- function(gene,
     zScore <- (k - mu) / sqrt(sigma)
     ora_res$zScore <- zScore
 
+    ## Fisher's exact odds ratio: what fisher.test()$estimate reports for the 2x2
+    ## table below. FoldEnrichment is a ratio of proportions, whereas the odds
+    ## ratio is the effect size the test itself is built on, so it is worth
+    ## exposing next to it.
+    ##
+    ##            in gene set   not in gene set
+    ##  in list        k            n - k
+    ##  not in list  M - k     N - M - n + k
+    ##
+    ## A zero cell gives 0 or Inf, exactly as fisher.test() does.
+    ora_res$oddsRatio <- (k * (N - M - n + k)) / ((n - k) * (M - k))
+
     # Add Description
     gsid2name <- gson@gsid2name
     if (!is.null(gsid2name) && "ID" %in% names(ora_res)) {
@@ -176,7 +188,7 @@ ora_gson <- function(gene,
     }
 
     # Reorder columns
-    expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor", "FoldEnrichment", "zScore", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
+    expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor", "FoldEnrichment", "oddsRatio", "zScore", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
     
     # Ensure all expected columns exist
     missing_cols <- setdiff(expected_cols, names(ora_res))

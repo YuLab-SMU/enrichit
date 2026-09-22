@@ -110,3 +110,47 @@ test_that("weighted ORA runs on a small universe", {
   expect_true(all(c("ID", "pvalue", "Count") %in% colnames(weighted)))
   expect_false(isTRUE(all.equal(weighted$pvalue, unweighted$pvalue)))
 })
+
+test_that("ORA results carry a Fisher odds ratio (#501)", {
+    de_genes <- c("Gene1", "Gene2", "Gene3", "Gene4", "Gene5")
+    all_genes <- paste0("Gene", 1:1000)
+    gene_sets <- list(
+        P1 = paste0("Gene", 1:50),      # overlaps the DE list
+        P2 = paste0("Gene", 51:150),    # does not
+        P3 = paste0("Gene", 201:260)
+    )
+
+    res <- ora(gene = de_genes, gene_sets = gene_sets, universe = all_genes)
+
+    expect_true("oddsRatio" %in% colnames(res))
+    # sits with the other effect sizes
+    expect_equal(match("oddsRatio", colnames(res)),
+                 match("FoldEnrichment", colnames(res)) + 1)
+
+    for (i in seq_len(nrow(res))) {
+        k <- res$Count[i]
+        n <- as.numeric(strsplit(as.character(res$GeneRatio[i]), "/")[[1]])[2]
+        br <- as.numeric(strsplit(as.character(res$BgRatio[i]), "/")[[1]])
+        M <- br[1]; N <- br[2]
+
+        # the column is the 2x2 cross-product odds ratio
+        cross <- (k * (N - M - n + k)) / ((n - k) * (M - k))
+        expect_equal(res$oddsRatio[i], cross, tolerance = 1e-10)
+
+        # and the reported p-value is Fisher's exact test on that same table,
+        # which is what makes the odds ratio the matching effect size
+        tab <- matrix(c(k, n - k, M - k, N - M - n + k), nrow = 2, byrow = TRUE)
+        if (all(tab > 0)) {
+            expect_equal(
+                res$pvalue[i],
+                unname(fisher.test(tab, alternative = "greater")$p.value),
+                tolerance = 1e-8
+            )
+        } else {
+            # a degenerate table gives 0 (no overlap) or Inf (complete overlap)
+            # rather than a finite ratio - just confirm it is a number, since the
+            # formula check above already pinned the value down
+            expect_true(is.numeric(res$oddsRatio[i]))
+        }
+    }
+})

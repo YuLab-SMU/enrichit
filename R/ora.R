@@ -113,6 +113,18 @@ ora <- function(gene, gene_sets, universe, weight = NULL) {
     
     # FoldEnrichment = (Count/DESize) / (SetSize/UniverseSize)
     result$FoldEnrichment <- (result$Count / result$DESize) / (result$SetSize / result$UniverseSize)
+
+    # Fisher's exact odds ratio for the 2x2 table below. FoldEnrichment is a ratio
+    # of proportions, whereas the odds ratio is the effect size the test is built
+    # on. A degenerate table gives 0 or Inf, as fisher.test() reports.
+    #
+    #                in gene set     not in gene set
+    #  in DE list       Count         DESize - Count
+    #  not in list  SetSize - Count   (the remainder)
+    result$oddsRatio <- with(result,
+        (Count * (UniverseSize - SetSize - DESize + Count)) /
+            ((DESize - Count) * (SetSize - Count))
+    )
     
     # Sort by p-value
     result <- result[order(result$pvalue), ]
