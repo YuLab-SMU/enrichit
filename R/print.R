@@ -168,17 +168,33 @@ setMethod("show", signature(object="enrichResult"),
 
 
 print_citation_msg <- function(ontology) {
-    refs <- yulab.utils:::ref_knownledge()
+    ## Imported result tables did not run an enrichit/clusterProfiler
+    ## analysis.  Do not fall back to the clusterProfiler paper for an
+    ## unknown collection (the old fallback incorrectly attributed that work).
+    if (length(ontology) != 1L || is.na(ontology) || !nzchar(ontology) ||
+        identical(ontology, "UNKNOWN")) {
+        return(invisible(NULL))
+    }
 
-    if (ontology == "HDO" || ontology == "NCG") {
-        citation_msg <- refs["DOSE"]
-    } else if (ontology == "Reactome") {
-        citation_msg <- refs["ReactomePA"]
-    } else if (ontology == "MeSH") {
-        citation_msg <- refs["meshes"]
-    } else {
-        citation_msg <- refs["clusterProfiler_NP"]
+    refs <- yulab.utils:::ref_knownledge()
+    ref_name <- switch(
+        ontology,
+        HDO = "DOSE",
+        NCG = "DOSE",
+        Reactome = "ReactomePA",
+        MeSH = "meshes",
+        NULL
+    )
+    if (is.null(ref_name) || !ref_name %in% names(refs)) {
+        return(invisible(NULL))
+    }
+
+    citation_msg <- refs[[ref_name]]
+    if (length(citation_msg) == 0L || is.na(citation_msg) ||
+        !nzchar(citation_msg)) {
+        return(invisible(NULL))
     }
     cat(citation_msg, "\n\n")
+    invisible(NULL)
 }
 

@@ -10,3 +10,4 @@ src/symbols.rds
 bayes_enrich_method.md
 .dev
 src/*.so
+.vmark/

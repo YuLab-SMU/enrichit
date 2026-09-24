@@ -187,3 +187,21 @@ test_that("as_enrichResult derives RichFactor from BgRatio when geneSets absent"
     expect_equal(x@result$RichFactor, 5 / 50)
     expect_equal(x@result$FoldEnrichment, (5 / 100) / (50 / 1000))
 })
+
+test_that("converted results do not claim a clusterProfiler citation", {
+    ora <- suppressWarnings(as_enrichResult(data.frame(
+        ID = "T1", pvalue = 0.01, geneID = "g1",
+        stringsAsFactors = FALSE
+    )))
+    gsea <- suppressWarnings(as_gseaResult(
+        data.frame(ID = "T1", ES = 0.5, pvalue = 0.01,
+                   core_enrichment = "g1", stringsAsFactors = FALSE),
+        geneList = c(g1 = 1),
+        geneSets = list(T1 = "g1")
+    ))
+
+    ora_output <- capture.output(show(ora))
+    gsea_output <- capture.output(show(gsea))
+    expect_false(any(grepl("clusterProfiler", ora_output, fixed = TRUE)))
+    expect_false(any(grepl("clusterProfiler", gsea_output, fixed = TRUE)))
+})
