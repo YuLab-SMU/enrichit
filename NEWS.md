@@ -1,3 +1,13 @@
+# enrichit 0.2.5.9000
+
+- `gsea_gson()`: added a `reportNA` argument to retain pathways whose
+  p-values were set to `NA` by the multilevel engine under unbalanced
+  gene-level statistics. When combined with `pvalueCutoff = 1`, advanced
+  users can now retrieve every gene set that passed the size filter,
+  including those with NA significance. Default `reportNA = FALSE`
+  preserves the historical behaviour of dropping NA rows.
+  (2026-10-04, Sun, closes YuLab-SMU/DOSE#88)
+
 # enrichit 0.2.5
 
 - ORA results now carry an **`oddsRatio`** column (Fisher's exact 2x2 odds ratio, placed next to `FoldEnrichment`). `FoldEnrichment` is a ratio of proportions, whereas the odds ratio is the effect size that the hypergeometric/Fisher test is built on; note it is the plain cross-product odds ratio and differs slightly from `fisher.test()$estimate`, which reports the conditional MLE (2026-09-22, Tue)

@@ -21,6 +21,7 @@ gsea_gson(
   pvalThreshold = 0.1,
   seed = FALSE,
   verbose = TRUE,
+  reportNA = FALSE,
   ...
 )
 }
@@ -59,6 +60,12 @@ clusterProfiler/DOSE behavior (default: 0.05).}
 (default: FALSE).}
 
 \item{verbose}{Logical. Print progress messages.}
+
+\item{reportNA}{If \code{TRUE}, pathways with \code{NA} p-values (produced
+by the multilevel method when gene-level statistics are unbalanced) are
+retained in the result instead of being silently dropped. Useful with
+\code{pvalueCutoff = 1} to inspect the complete set of tested pathways.
+Default: \code{FALSE} (historical behaviour).}
 
 \item{...}{Additional parameters passed to gsea()}
 }

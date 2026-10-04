@@ -281,6 +281,11 @@ scale_fgsea_ranks <- function(geneList, exponent) {
 #' @param pvalueCutoff P-value cutoff applied to both the raw p-value and the
 #'   adjusted p-value (\code{p.adjust}), consistent with the historical
 #'   clusterProfiler/DOSE behavior (default: 0.05).
+#' @param reportNA If \code{TRUE}, pathways with \code{NA} p-values (produced
+#'   by the multilevel method when gene-level statistics are unbalanced) are
+#'   retained in the result instead of being silently dropped. Useful with
+#'   \code{pvalueCutoff = 1} to inspect the complete set of tested pathways.
+#'   Default: \code{FALSE} (historical behaviour).
 #' @param ... Additional parameters passed to gsea()
 #' @return gseaResult object
 #' @author Guangchuang Yu
@@ -301,6 +306,7 @@ gsea_gson <- function(geneList,
                  pvalThreshold = 0.1,
                  seed = FALSE,
                  verbose = TRUE,
+                 reportNA = FALSE,
                  ...) {
 
     if (!inherits(gson, "GSON")) {
@@ -375,10 +381,18 @@ gsea_gson <- function(geneList,
     # must pass the cutoff, matching the historical DOSE/clusterProfiler
     # behavior (see DOSE::GSEA_fgsea: res[res$pvalue <= pvalueCutoff, ] followed
     # by res[res$p.adjust <= pvalueCutoff, ]).
+    #
+    # When reportNA = TRUE, rows with NA p-value (e.g. multilevel method under
+    # unbalanced gene-level statistics) are kept and automatically bypass the
+    # cutoff comparison, so pvalueCutoff = 1 together with reportNA = TRUE
+    # returns every gene set that passed size filtering. (YuLab-SMU/DOSE#88)
     if (!is.null(pvalueCutoff)) {
-        gsea_res <- gsea_res[!is.na(gsea_res$pvalue), ]
-        gsea_res <- gsea_res[gsea_res$pvalue <= pvalueCutoff, ]
-        gsea_res <- gsea_res[gsea_res$p.adjust <= pvalueCutoff, ]
+        if (!reportNA) {
+            gsea_res <- gsea_res[!is.na(gsea_res$pvalue), ]
+        }
+        pass_pval <- is.na(gsea_res$pvalue) | (gsea_res$pvalue <= pvalueCutoff)
+        pass_padj <- is.na(gsea_res$p.adjust) | (gsea_res$p.adjust <= pvalueCutoff)
+        gsea_res <- gsea_res[pass_pval & pass_padj, ]
     }
     
     if (nrow(gsea_res) == 0) {
@@ -430,7 +444,8 @@ gsea_gson <- function(geneList,
                    pAdjustMethod = pAdjustMethod,
                    exponent = exponent,
                    minGSSize = minGSSize,
-                   maxGSSize = maxGSSize)
+                   maxGSSize = maxGSSize,
+                   reportNA = reportNA)
                    
     res <- new("gseaResult",
                result = gsea_res,
