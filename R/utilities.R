@@ -115,13 +115,13 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     N <- length(geneList)
     geneSet <- unique(intersect(as.character(geneSet), genes))
     if (length(geneSet) == 0 || N == 0) {
-        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        return(list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
     }
 
     in_set <- !is.na(match(genes, geneSet))
     N_H <- sum(in_set)
     if (N_H == 0) {
-        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        return(list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
     }
 
     weights <- abs(geneList)
@@ -132,7 +132,7 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     N_miss <- N - N_H
 
     if (N_R == 0) {
-        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        return(list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
     }
 
     hit_inc <- (weights * in_set) / N_R
@@ -140,7 +140,7 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     running <- cumsum(hit_inc) - cumsum(miss_inc)
 
     if (any(!is.finite(running))) {
-        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        return(list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
     }
 
     if (scoreType == "pos") {
@@ -163,7 +163,7 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     }
 
     if (is.na(peak_idx) || length(peak_idx) == 0) {
-        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        return(list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
     }
     peak_idx <- peak_idx[[1]]
 

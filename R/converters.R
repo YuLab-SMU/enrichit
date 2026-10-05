@@ -289,12 +289,18 @@ as_gseaResult.default <- function(
         is.null(df$core_enrichment)
     if (missing_details) {
         details <- lapply(seq_len(nrow(df)), function(i) {
-            gsea_leading_edge_details(
-                geneList,
-                geneSets[[df$ID[i]]],
-                exponent = exponent,
-                scoreType = scoreType
-            )
+            gs <- geneSets[[df$ID[i]]]
+            if (!any(gs %in% names(geneList))) {
+                list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%",
+                     core_enrichment = "")
+            } else {
+                gsea_leading_edge_details(
+                    geneList,
+                    gs,
+                    exponent = exponent,
+                    scoreType = scoreType
+                )
+            }
         })
         if (is.null(df$rank)) {
             df$rank <- vapply(details, `[[`, integer(1), "rank")

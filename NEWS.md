@@ -1,3 +1,19 @@
+# enrichit 0.2.5.9005
+
+- `as_gseaResult()` / `gsea_leading_edge_details()`: replace the
+  `rank = 0L` sentinel used by the early-exit paths with
+  `rank = NA_integer_`. `rank = 0L` violated the rank-is-positive
+  invariant expected by downstream consumers (e.g.
+  `test-converters.R:104` asserted `all(rank > 0)`), and idiomatic
+  but unguarded code such as `seq_len(result$rank[i])` or
+  `geneList[1:rank]` would silently index the wrong positions.
+  `NA_integer_` is both an explicit "not available" marker and a
+  value that trips *loudly* if anyone tries to feed it into `:` or
+  `[`. Pathways whose gene sets share no gene with the ranked list
+  now also short-circuit in `as_gseaResult()` instead of calling
+  `gsea_leading_edge_details()` on an empty intersection.
+  (closes review issue #1 on the DOSE#46 follow-up).
+
 # enrichit 0.2.5.9004
 
 - `gsea_leading_edge_details()`: drop the now-redundant `is.finite()`
