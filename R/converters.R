@@ -17,7 +17,31 @@
 ##' tool-specific naming should be mapped to the canonical schema by the
 ##' per-tool importers in 'enrichplot'
 ##' @param ... additional arguments passed to methods
-##' @return An \code{enrichResult} object
+##' @return An \code{enrichResult} object.  The significance columns are
+##'   always laid out in the same three-column convention:
+##'   \describe{
+##'     \item{\code{pvalue}}{Raw nominal p-value (no multiplicity
+##'       correction) from the underlying hypothesis test (Fisher's exact
+##'       for ORA, the permutation/multilevel null for GSEA).}
+##'     \item{\code{p.adjust}}{\code{stats::p.adjust(pvalue, method =
+##'       pAdjustMethod)}; default \code{"BH"} for Benjamini & Hochberg
+##'       (1995) step-up strong control of the false discovery rate.
+##'       Because no \eqn{\pi_0} is estimated, BH-adjusted p-values are
+##'       typically \strong{>=} the Storey q-values on the same data and
+##'       are the value reviewers expect to see reported.}
+##'     \item{\code{qvalue}}{Storey & Tibshirani (2003) positive FDR
+##'       estimate via \code{qvalue::qvalue(pvalue)}.  \eqn{\pi_0} (the
+##'       proportion of tests drawn from the null) is estimated from the
+##'       empirical p-value distribution, so q-values are typically
+##'       smaller than BH-\code{p.adjust} under a non-null majority and
+##'       match the Broad GSEA desktop output.  \strong{Important}:
+##'       estimation failures (e.g. \code{qvalue} is not installed,
+##'       \eqn{\pi_0} estimation fails, or too few p-values are
+##'       provided) are kept as \code{NA} and \strong{never} silently
+##'       replaced with \code{p.adjust}.  Filter or plot against
+##'       \code{p.adjust} directly when you need a guaranteed
+##'       non-missing column for downstream work.}
+##'   }
 ##' @export
 as_enrichResult <- function(x, ...) {
     UseMethod("as_enrichResult")
@@ -204,7 +228,26 @@ as_enrichResult.default <- function(
 ##' fgsea-style \code{pathway}/\code{ES}/\code{pval}/\code{padj}/\code{size}
 ##' are recognized)
 ##' @param ... additional arguments passed to methods
-##' @return A \code{gseaResult} object
+##' @return A \code{gseaResult} object.  The \code{result} slot carries
+##'   the same three-column significance layout documented in the
+##'   \code{as_enrichResult} \code{@return} section:
+##'   \describe{
+##'     \item{\code{pvalue}}{Raw nominal p-value from the chosen GSEA
+##'       permutation or multilevel null.}
+##'     \item{\code{p.adjust}}{\code{stats::p.adjust(pvalue, method =
+##'       pAdjustMethod)} (default \code{"BH"}).  Strong FDR control;
+##'       typically \strong{>=} the Storey q-value on the same data;
+##'       this is the value reviewers expect to see reported.}
+##'     \item{\code{qvalue}}{Storey & Tibshirani (2003) pFDR estimate via
+##'       \code{qvalue::qvalue(pvalue)}; \eqn{\pi_0} is estimated from the
+##'       empirical p-value distribution, so q-values are typically
+##'       smaller than BH-\code{p.adjust} under a non-null majority and
+##'       match the Broad GSEA desktop output.  Estimation failures are
+##'       kept as \code{NA} and never silently replaced with
+##'       \code{p.adjust}; filter or plot against \code{p.adjust} when
+##'       you need a guaranteed non-missing value.}
+##'   }
+##'   See the \code{as_enrichResult} man page for the full explanation.
 ##' @export
 as_gseaResult <- function(x, ...) {
     UseMethod("as_gseaResult")
@@ -449,12 +492,11 @@ as_gseaResult.default <- function(
         df$p.adjust <- suppressWarnings(as.numeric(df$p.adjust))
     }
 
-    if (is.null(df$qvalue)) {
-        q <- calculate_qvalue(df$pvalue)
-        ## keep the column non-empty when qvalue estimation fails
-        q[is.na(q)] <- df$p.adjust[is.na(q)]
-        df$qvalue <- q
-    } else {
+        if (is.null(df$qvalue)) {
+            df$qvalue <- calculate_qvalue(df$pvalue)
+        } else {
+            df$qvalue <- suppressWarnings(as.numeric(df$qvalue))
+        }
         df$qvalue <- suppressWarnings(as.numeric(df$qvalue))
     }
     df

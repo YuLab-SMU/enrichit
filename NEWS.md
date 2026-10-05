@@ -1,3 +1,49 @@
+# enrichit 0.2.5.9010
+
+- Document the three-column significance layout (pvalue / p.adjust /
+  qvalue) explicitly in the roxygen \code{@return} sections of
+  \code{as_enrichResult()} and \code{as_gseaResult()}.  The doc now
+  distinguishes BH-adjusted p-values from Storey q-values, explains
+  why both columns are kept, and warns that \code{qvalue} remains
+  \code{NA} on estimation failures instead of being silently
+  overwritten with \code{p.adjust}.  (2026-10-05, Mon, addresses
+  YuLab-SMU/DOSE#24, change 2/3)
+
+# enrichit 0.2.5.9010
+
+- Document the three-column significance layout (pvalue / p.adjust /
+  qvalue) explicitly in the roxygen \code{@return} sections of
+  \code{as_enrichResult()} and \code{as_gseaResult()}.  The doc now
+  distinguishes BH-adjusted p-values from Storey q-values, explains
+  why both columns are kept, and warns that \code{qvalue} remains
+  \code{NA} on estimation failures instead of being silently
+  overwritten with \code{p.adjust}.  (2026-10-05, Mon, addresses
+  YuLab-SMU/DOSE#24, change 2/3)
+
+# enrichit 0.2.5.9009
+
+- Remove the silent fallback in the converter pipeline that copied
+  `p.adjust` values into the `qvalue` column whenever
+  `qvalue::qvalue()` failed. The conversion (and the main GSEA/ORA
+  entry points) now keeps `NA` in `qvalue` for failed rows instead of
+  silently making `qvalue` numerically identical to `p.adjust`, which
+  was the direct trigger for the user confusion reported in
+  YuLab-SMU/DOSE#24.  Filter or plot against `p.adjust` explicitly
+  when you need a guaranteed non-missing significance column.
+  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24, change 1/3)
+
+# enrichit 0.2.5.9009
+
+- Remove the silent fallback in the converter pipeline that copied
+  `p.adjust` values into the `qvalue` column whenever
+  `qvalue::qvalue()` failed. The conversion (and the main GSEA/ORA
+  entry points) now keeps `NA` in `qvalue` for failed rows instead of
+  silently making `qvalue` numerically identical to `p.adjust`, which
+  was the direct trigger for the user confusion reported in
+  YuLab-SMU/DOSE#24.  Filter or plot against `p.adjust` explicitly
+  when you need a guaranteed non-missing significance column.
+  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24, change 1/3)
+
 # enrichit 0.2.5.9008
 
 - `gsea_gson()` gains a `reportNA` argument to retain pathways whose
