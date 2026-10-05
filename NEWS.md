@@ -1,3 +1,24 @@
+# enrichit 0.2.5.9011
+
+- Annotate the significance columns in the user-facing show/print
+  output: each of the four \code{show()} methods (enrichResult,
+  gseaResult, nseaResult, mnseaResult) now prints an extra comment
+  block after \code{#...pvalues adjusted by ...} explaining that
+  \code{qvalue} comes from \code{qvalue::qvalue()} (Storey &
+  Tibshirani, 2003), that failures are left as \code{NA} rather than
+  being silently replaced with \code{p.adjust}, and pointing the
+  user to \code{p.adjust} for guaranteed non-missing downstream
+  filtering/plotting.
+- Update the converter test assertions: \code{expect_false(anyNA(qvalue))}
+  was incompatible with the (documented) NA-on-failure semantics after
+  the removal of the silent \code{p.adjust}-fallback in v0.2.5.9009.
+  The test now asserts \code{expect_type(qvalue, "double")} plus an
+  invariant that the NA pattern in \code{qvalue} exactly matches the
+  output of \code{calculate_qvalue()} on the same pvector — so
+  future regressions (i.e. silent fallbacks sneaking back in) are
+  flagged immediately.  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24,
+  changes 3/3)
+
 # enrichit 0.2.5.9010
 
 - Document the three-column significance layout (pvalue / p.adjust /

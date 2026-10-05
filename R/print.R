@@ -19,8 +19,14 @@ setMethod("show", signature(object="gseaResult"),
               cat("#...@geneList", "\t")
               str(object@geneList)
               cat("#...nPerm", "\t", params$nPerm, "\n")
-              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n", 
+              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
+              cat("#...qvalue column estimated by 'qvalue::qvalue' (Storey &")
+              cat(" Tibshirani, 2003); NA if the package is unavailable, pi_0\n")
+              cat("#...estimation fails, or too few p-values are provided;")
+              cat(" failures are kept as NA and never silently replaced\n")
+              cat("#...with p.adjust (use p.adjust directly when a non-missing")
+              cat(" column is required for downstream work).\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -60,8 +66,14 @@ setMethod("show", signature(object="nseaResult"),
               cat("#...@diffusion_scores", "\t")
               str(object@diffusion_scores)
               
-              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n", 
+              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
+              cat("#...qvalue column estimated by 'qvalue::qvalue' (Storey &")
+              cat(" Tibshirani, 2003); NA if the package is unavailable, pi_0\n")
+              cat("#...estimation fails, or too few p-values are provided;")
+              cat(" failures are kept as NA and never silently replaced\n")
+              cat("#...with p.adjust (use p.adjust directly when a non-missing")
+              cat(" column is required for downstream work).\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -107,6 +119,12 @@ setMethod("show", signature(object="mnseaResult"),
               str(object@collapsed_scores)
               cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
+              cat("#...qvalue column estimated by 'qvalue::qvalue' (Storey &")
+              cat(" Tibshirani, 2003); NA if the package is unavailable, pi_0\n")
+              cat("#...estimation fails, or too few p-values are provided;")
+              cat(" failures are kept as NA and never silently replaced\n")
+              cat("#...with p.adjust (use p.adjust directly when a non-missing")
+              cat(" column is required for downstream work).\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -137,9 +155,15 @@ setMethod("show", signature(object="enrichResult"),
               
               cat("#...@gene", "\t")
               str(object@gene)
-              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n", 
+              cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           object@pAdjustMethod, object@pvalueCutoff))
-              
+              cat("#...qvalue column estimated by 'qvalue::qvalue' (Storey &")
+              cat(" Tibshirani, 2003); NA if the package is unavailable, pi_0\n")
+              cat("#...estimation fails, or too few p-values are provided;")
+              cat(" failures are kept as NA and never silently replaced\n")
+              cat("#...with p.adjust (use p.adjust directly when a non-missing")
+              cat(" column is required for downstream work).\n")
+
               object <- get_enriched(object)
               n <- nrow(object@result)
               cat(sprintf("#...%d enriched terms found\n", n))

@@ -492,11 +492,9 @@ as_gseaResult.default <- function(
         df$p.adjust <- suppressWarnings(as.numeric(df$p.adjust))
     }
 
-        if (is.null(df$qvalue)) {
-            df$qvalue <- calculate_qvalue(df$pvalue)
-        } else {
-            df$qvalue <- suppressWarnings(as.numeric(df$qvalue))
-        }
+    if (is.null(df$qvalue)) {
+        df$qvalue <- calculate_qvalue(df$pvalue)
+    } else {
         df$qvalue <- suppressWarnings(as.numeric(df$qvalue))
     }
     df
