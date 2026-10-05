@@ -152,9 +152,7 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     } else {
         max_es <- max(running)
         min_es <- min(running)
-        if (!is.finite(max_es) || !is.finite(min_es)) {
-            return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
-        }
+        stopifnot(is.finite(max_es), is.finite(min_es))
         if (isTRUE(abs(max_es) >= abs(min_es))) {
             peak_idx <- which.max(running)
             es <- max_es

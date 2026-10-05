@@ -1,3 +1,14 @@
+# enrichit 0.2.5.9004
+
+- `gsea_leading_edge_details()`: drop the now-redundant `is.finite()`
+  pre-check on `max_es` / `min_es` in the `scoreType = "std"` branch.
+  That check was unreachable because `any(!is.finite(running))`
+  short-circuits before peak selection, and `max(.)` / `min(.)` of
+  an all-finite vector cannot produce a non-finite value. It is
+  replaced with a `stopifnot(is.finite(...), ...)` assertion so the
+  invariant stays visible and documented. (closes review issue #2 on
+  the DOSE#46 follow-up).
+
 # enrichit 0.2.5.9003
 
 - `gsea_leading_edge_details()`: stop fabricating a leading-edge
