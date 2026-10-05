@@ -1,3 +1,12 @@
+# enrichit 0.2.5.9002
+
+- `gsea_leading_edge_details()`: align the input contract with
+  `gseaScores()` by validating that `geneList` is a *named numeric*
+  vector with entirely finite values, and stop early with an
+  informative message instead of letting NA/NaN percolate through the
+  weighted hit increments only to be discarded three steps later
+  downstream (closes review issue #4 on the DOSE#46 follow-up).
+
 # enrichit 0.2.5.9001
 
 - `gsea_leading_edge_details()`: harden the scoreType="std" branch

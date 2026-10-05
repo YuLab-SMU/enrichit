@@ -105,6 +105,12 @@ validate_gene_sets <- function(gene_sets) {
 }
 
 gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
+    if (!is.numeric(geneList) || is.null(names(geneList))) {
+        stop("geneList must be a named numeric vector")
+    }
+    if (any(!is.finite(geneList))) {
+        stop("Not all stats values are finite numbers")
+    }
     genes <- names(geneList)
     N <- length(geneList)
     geneSet <- unique(intersect(as.character(geneSet), genes))
