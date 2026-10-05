@@ -1,139 +1,63 @@
 # enrichit 0.2.5.9008
 
-- Add a complete `##'` roxygen documentation block above
-  `gsea_leading_edge_details()` in `R/utilities.R` so that the rank
-  sentinel contract, return-value semantics, and early-exit behavior
-  are now discoverable via `?gsea_leading_edge_details` (internal) and
-  the package NEWS, not only buried in test-case in-line comments.
-  The doc block documents:
-  (a) the three call sites that rely on the helper — `as_gseaResult()`,
-      the NSEA result builder, and the multi-level reconciler;
-  (b) the full `@return` signature (`rank` / `leading_edge` /
-      `core_enrichment`) with explicit warnings that the
-      `leading_edge` string is display-only and must not be parsed
-      downstream;
-  (c) the `rank = 0L` sentinel — when it applies (zero overlap,
-      `N_R == 0`, non-finite running score) and why `NA_integer_` is
-      explicitly forbidden (breaks `seq_len(rank)` slicing and
-      `all(rank >= 0L)` assertions);
-  (d) a `@note` explaining that short-circuits are ordered so that
-      `which.max()` / `which.min()` never fabricate a spurious peak on
-      a zero-signal pathway.
-  This addresses the maintainability-gap concern raised in TRAE Code
-  Review issue I2 — sentinel semantics having already caused two
-  regressions in the v9005/v9006 cycle due to the absence of any
-  contract statement at the function definition.
-  (2026-10-05, Mon, TRAE Code Review closes issue I2 / v0.2.5.9006)
-
-# enrichit 0.2.5.9007
-
-- `test-converters.R` (as_gseaResult fills rank/leading_edge/core_enrichment):
-  harden the `rank`-contract assertions against two silent-regression
-  vectors that were previously left unguarded by the 0.2.5.9006 fix:
-  (1) `expect_type(result$rank, "integer")` now rejects type drift
-      (e.g. numeric `0` or `NA_real_` replacing the `0L` integer sentinel);
-  (2) `expect_false(anyNA(result$rank))` now rejects any accidental
-      re-introduction of an `NA_integer_` sentinel like the one that
-      caused the 0.2.5.9005 regression — failures point directly at the
-      contract violation instead of the cryptic 'expect_true(NA)' error
-      produced by the previous `all(rank >= 0L)` check in isolation.
-  (2026-10-05, Mon, TRAE Code Review closes issue I1 / v0.2.5.9006)
-
-# enrichit 0.2.5.9006
-
-- Revert the `rank = NA_integer_` sentinel introduced in 0.2.5.9005 and
-  restore the documented `rank = 0L` sentinel for the no-signal
-  early-exit paths of `gsea_leading_edge_details()` and
-  `as_gseaResult()`. The NA-intended fix broke a real downstream
-  contract: `all(rank > 0)` assertions in both the `enrichit` and
-  `enrichplot` test suites collapsed to `NA` (instead of a clean
-  boolean) whenever a pathway had zero in-set weighted magnitude —
-  exactly the YuLab-SMU/DOSE#46 scenario. `rank = 0L` is a better
-  sentinel: downstream index idioms like `geneList[1:rank]` /
-  `seq_len(rank)` still degrade safely to an empty slice rather than
-  throwing a type error on `NA`. The matching assertions in both
-  packages now read `all(rank >= 0L)` with an in-line comment
-  explaining the `0L` semantics.
-  (2026-10-05, Mon, fix regression from review#1 closes commit
-  e354f0b / v0.2.5.9005)
-
-# enrichit 0.2.5.9005
-
-- `as_gseaResult()` / `gsea_leading_edge_details()`: replace the
-  `rank = 0L` sentinel used by the early-exit paths with
-  `rank = NA_integer_`. `rank = 0L` violated the rank-is-positive
-  invariant expected by downstream consumers (e.g.
-  `test-converters.R:104` asserted `all(rank > 0)`), and idiomatic
-  but unguarded code such as `seq_len(result$rank[i])` or
-  `geneList[1:rank]` would silently index the wrong positions.
-  `NA_integer_` is both an explicit "not available" marker and a
-  value that trips *loudly* if anyone tries to feed it into `:` or
-  `[`. Pathways whose gene sets share no gene with the ranked list
-  now also short-circuit in `as_gseaResult()` instead of calling
-  `gsea_leading_edge_details()` on an empty intersection.
-  (closes review issue #1 on the DOSE#46 follow-up).
-
-# enrichit 0.2.5.9004
-
-- `gsea_leading_edge_details()`: drop the now-redundant `is.finite()`
-  pre-check on `max_es` / `min_es` in the `scoreType = "std"` branch.
-  That check was unreachable because `any(!is.finite(running))`
-  short-circuits before peak selection, and `max(.)` / `min(.)` of
-  an all-finite vector cannot produce a non-finite value. It is
-  replaced with a `stopifnot(is.finite(...), ...)` assertion so the
-  invariant stays visible and documented. (closes review issue #2 on
-  the DOSE#46 follow-up).
-
-# enrichit 0.2.5.9003
-
-- `gsea_leading_edge_details()`: stop fabricating a leading-edge
-  signal when every gene inside the candidate set has zero weighted
-  magnitude (`sum(abs(geneList[geneSet])^exponent) == 0`). Previously
-  the running enrichment score was forced to a monotonically
-  decreasing all-negative curve and `which.max(...)` picked a
-  misleading peak (often the first or last index), producing a
-  non-zero `rank`, false `tags%` and a bogus `core_enrichment`
-  string. The function now returns the canonical "no signal"
-  sentinel in that case. (closes review issue #3 on the DOSE#46
-  follow-up).
-
-# enrichit 0.2.5.9002
-
-- `gsea_leading_edge_details()`: align the input contract with
-  `gseaScores()` by validating that `geneList` is a *named numeric*
-  vector with entirely finite values, and stop early with an
-  informative message instead of letting NA/NaN percolate through the
-  weighted hit increments only to be discarded three steps later
-  downstream (closes review issue #4 on the DOSE#46 follow-up).
-
-# enrichit 0.2.5.9001
-
-- `gsea_leading_edge_details()`: harden the scoreType="std" branch
-  against NA/NaN running scores, mirroring the fix already applied to
-  `gseaScores()` in 0.2.5. Previously, when the weighted hit increments
-  could not be computed (e.g. non-finite gene-level statistics that
-  bypass the main entry-point validation via `as_gseaResult()` or the
-  NSEA pipeline), `max(running)` / `min(running)` returned `NA` and
-  the unguarded `if (abs(max_es) >= abs(min_es))` aborted with
-  "missing value where TRUE/FALSE needed" (the same class of bug
-  tracked in YuLab-SMU/DOSE#46 for `DOSE:::gseaScores`). The function
-  now (1) sums the per-hit weights with `na.rm = TRUE`, (2) bails out
-  early via `any(!is.finite(running))` before peak selection, and
-  (3) guards the classic-GSEA max-vs-min ES comparison with both an
-  `is.finite()` pre-check and `isTRUE()`, so downstream consumers
-  (`gsea_gson()`, NSEA result building, external-result converters)
-  never crash on pathological inputs.
-  (2026-10-04, Sun, closes YuLab-SMU/DOSE#46)
-
-# enrichit 0.2.5.9000
-
-- `gsea_gson()`: added a `reportNA` argument to retain pathways whose
-  p-values were set to `NA` by the multilevel engine under unbalanced
-  gene-level statistics. When combined with `pvalueCutoff = 1`, advanced
-  users can now retrieve every gene set that passed the size filter,
-  including those with NA significance. Default `reportNA = FALSE`
-  preserves the historical behaviour of dropping NA rows.
+- `gsea_gson()` gains a `reportNA` argument to retain pathways whose
+  multilevel p-values are `NA` under unbalanced gene-level statistics.
+  Combine with `pvalueCutoff = 1` to retrieve every gene set that
+  passes the size filter, including those with NA significance.
+  Default `reportNA = FALSE` preserves the historical behaviour of
+  dropping NA rows.
   (2026-10-04, Sun, closes YuLab-SMU/DOSE#88)
+
+- Harden the GSEA leading-edge pipeline against the class of bugs
+  tracked in YuLab-SMU/DOSE#46 ("missing value where TRUE/FALSE
+  needed" after running scores collapse to NA). All changes apply
+  consistently across the main `gsea()` loop, the NSEA and
+  multi-level result builders, and the `as_gseaResult()` converter:
+  - `gsea_leading_edge_details()` in `R/utilities.R` now sums the
+    weighted in-set contribution with `na.rm = TRUE`, short-circuits
+    on `any(!is.finite(running))` *before* peak selection, enforces
+    the same entry-point contract as `gseaScores()` (named numeric,
+    all finite — so an invalid input stops loudly at the helper
+    boundary instead of leaking NaN three steps downstream), bails
+    out on `N_R == 0` rather than letting `which.max()` fabricate a
+    spurious peak from a pure-negative all-zero-hit curve, and
+    replaces the unreachable `is.finite()` pre-check on
+    `max_es`/`min_es` (dead code after the global running-score
+    guard) with an explicit `stopifnot` invariant. The canonical
+    no-signal sentinel returned on every early-exit branch is
+    `list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%",
+    core_enrichment = "")` — `rank = 0L` degrades safely to an empty
+    slice when downstream code writes `geneList[1:rank]` or
+    `seq_len(rank)`, whereas `NA_integer_` would abort on indexing.
+  - `as_gseaResult.default()` keeps the no-gene-overlap short-circuit
+    introduced for DOSE#46 (skip `gsea_leading_edge_details()`
+    entirely when the pathway shares no gene with
+    `names(geneList)`) and returns the same `rank = 0L` sentinel,
+    aligned with the helper contract.
+  - Converter tests in `tests/testthat/test-converters.R` now assert
+    the full rank contract in order: `expect_type(rank, "integer")`,
+    `expect_false(anyNA(rank))`, `expect_true(all(rank >= 0L))`. The
+    last check is annotated with an in-line comment explaining the
+    `0L` sentinel semantics so the contract is visible at the test
+    site as well as in the helper documentation.
+  (2026-10-04–2026-10-05, Sun–Mon, closes YuLab-SMU/DOSE#46)
+
+- Publish the `gsea_leading_edge_details()` contract as a complete
+  `##'` roxygen block in `R/utilities.R` (previously the semantics
+  existed only in test comments and commit messages). The block
+  documents the three cross-file callers — `as_gseaResult()`, the
+  NSEA result builder, the multi-level reconciler — the full list
+  return shape (`rank` / `leading_edge` / `core_enrichment`), the
+  exact `rank = 0L` sentinel trigger conditions (zero overlap,
+  `N_R == 0`, non-finite running score) with an explicit warning
+  that `NA_integer_` is forbidden because it breaks
+  `seq_len(rank)`-style slicing and `all(rank >= 0L)` comparisons,
+  a note that the `leading_edge` `tags=X%, list=Y%, signal=Z%`
+  string is a display label only and must not be parsed
+  downstream (use the `"/"`-joined `core_enrichment` field instead),
+  and a `@note` explaining why short-circuits are ordered ahead of
+  `which.max()`/`which.min()`.
+  (2026-10-05, Mon, TRAE Code Review closes issue I2)
 
 # enrichit 0.2.5
 
