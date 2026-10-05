@@ -131,7 +131,11 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     N_R <- sum(weights[in_set], na.rm = TRUE)
     N_miss <- N - N_H
 
-    hit_inc <- if (N_R == 0) rep(0, N) else (weights * in_set) / N_R
+    if (N_R == 0) {
+        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+    }
+
+    hit_inc <- (weights * in_set) / N_R
     miss_inc <- if (N_miss == 0) rep(0, N) else (!in_set) / N_miss
     running <- cumsum(hit_inc) - cumsum(miss_inc)
 

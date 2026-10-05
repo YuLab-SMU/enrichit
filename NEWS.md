@@ -1,3 +1,16 @@
+# enrichit 0.2.5.9003
+
+- `gsea_leading_edge_details()`: stop fabricating a leading-edge
+  signal when every gene inside the candidate set has zero weighted
+  magnitude (`sum(abs(geneList[geneSet])^exponent) == 0`). Previously
+  the running enrichment score was forced to a monotonically
+  decreasing all-negative curve and `which.max(...)` picked a
+  misleading peak (often the first or last index), producing a
+  non-zero `rank`, false `tags%` and a bogus `core_enrichment`
+  string. The function now returns the canonical "no signal"
+  sentinel in that case. (closes review issue #3 on the DOSE#46
+  follow-up).
+
 # enrichit 0.2.5.9002
 
 - `gsea_leading_edge_details()`: align the input contract with
