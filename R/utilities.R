@@ -104,6 +104,58 @@ validate_gene_sets <- function(gene_sets) {
     return(gene_sets)
 }
 
+##' Compute leading-edge rank and meta for a single GSEA gene set.
+##'
+##' Re-runs the weighted running-enrichment-score accumulation used by
+##' \code{\link{gseaScores}} on a single gene set to locate the peak
+##' position and the core enrichment genes, matching the same semantics
+##' as the internal GSEA loop.  This helper is called from three places
+##' that cannot rely on the main GSEA output having already been
+##' prepared: \code{as_gseaResult()} (converter pipeline),
+##' \code{.build_nsea_result()} (NSEA result builder), and the
+##' multi-level result reconciler in \code{mnsea.R}.
+##'
+##' @param geneList named numeric vector of gene-level statistics,
+##'   assumed to be sorted in \strong{decreasing} order by the caller.
+##' @param geneSet character vector of gene identifiers in the set of
+##'   interest.
+##' @param exponent scalar weight exponent passed to
+##'   \code{gseaScores} (usually \code{1}).
+##' @param scoreType one of \code{"std"}, \code{"pos"}, or \code{"neg"};
+##'   controls which tail of the running score curve defines the peak.
+##'
+##' @return A list with three elements:
+##'   \describe{
+##'     \item{rank}{Integer index into the sorted \code{geneList} of the
+##'       peak running score, or \code{0L} as a documented sentinel when
+##'       no usable weighted in-set signal exists (i.e. the gene set has
+##'       zero overlap with \code{names(geneList)}, the weighted sum
+##'       \code{N_R} of in-set gene weights is zero, or the running
+##'       score vector contains any non-finite value).  \code{rank} is
+##'       always a finite integer; code MUST NOT use \code{NA_integer_}
+##'       here because downstream consumers commonly slice with
+##'       \code{seq_len(rank)} and compare with
+##'       \code{all(rank >= 0L)}.}
+##'     \item{leading_edge}{Human-readable \code{tags=X\%, list=Y\%,
+##'       signal=Z\%} summary string matching the Broad GSEA desktop
+##'       format.  Empty-signal sentinel cases use
+##'       \code{"tags=0\%, list=0\%, signal=0\%"}; the string is a
+##'       display label only and MUST NOT be parsed by downstream
+##'       packages (use \code{core_enrichment} instead).}
+##'     \item{core_enrichment}{\code{"/"}-joined string of the gene
+##'       symbols contributing to the peak (the "leading edge subset").
+##'       Empty string (\code{""}) for the zero-signal sentinel cases.}
+##'   }
+##'
+##' @note Early-exit short-circuits are deliberately ordered so that any
+##'   bad input or zero-signal pathway returns the documented
+##'   \code{rank = 0L} sentinel \emph{before} any call to
+##'   \code{which.max() / which.min()} can fabricate a spurious peak.
+##'
+##' @seealso \code{\link{gseaScores}} for the full accumulation;
+##'   \code{\link{as_gseaResult}} for the main converter consumer.
+##'
+##' @keywords internal
 gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     if (!is.numeric(geneList) || is.null(names(geneList))) {
         stop("geneList must be a named numeric vector")
