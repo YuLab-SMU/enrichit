@@ -21,7 +21,6 @@ setMethod("show", signature(object="gseaResult"),
               cat("#...nPerm", "\t", params$nPerm, "\n")
               cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
-              cat("#...qvalue is not BH/p.adjust; see ?as_gseaResult or ?as_enrichResult for the exact columns\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -63,7 +62,6 @@ setMethod("show", signature(object="nseaResult"),
               
               cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
-              cat("#...qvalue is not BH/p.adjust; see ?as_gseaResult or ?as_enrichResult for the exact columns\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -109,7 +107,6 @@ setMethod("show", signature(object="mnseaResult"),
               str(object@collapsed_scores)
               cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           params$pAdjustMethod, params$pvalueCutoff))
-              cat("#...qvalue is not BH/p.adjust; see ?as_gseaResult or ?as_enrichResult for the exact columns\n")
               cat(sprintf("#...%d enriched terms found\n", nrow(object@result)))
               str(object@result)
               cat("#...Citation\n")
@@ -142,7 +139,6 @@ setMethod("show", signature(object="enrichResult"),
               str(object@gene)
               cat(sprintf("#...pvalues adjusted by '%s' with cutoff < %s\n",
                           object@pAdjustMethod, object@pvalueCutoff))
-              cat("#...qvalue is not BH/p.adjust; see ?as_gseaResult or ?as_enrichResult for the exact columns\n")
 
               object <- get_enriched(object)
               n <- nrow(object@result)
