@@ -291,7 +291,7 @@ as_gseaResult.default <- function(
         details <- lapply(seq_len(nrow(df)), function(i) {
             gs <- geneSets[[df$ID[i]]]
             if (!any(gs %in% names(geneList))) {
-                list(rank = NA_integer_, leading_edge = "tags=0%, list=0%, signal=0%",
+                list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%",
                      core_enrichment = "")
             } else {
                 gsea_leading_edge_details(

@@ -1,3 +1,21 @@
+# enrichit 0.2.5.9006
+
+- Revert the `rank = NA_integer_` sentinel introduced in 0.2.5.9005 and
+  restore the documented `rank = 0L` sentinel for the no-signal
+  early-exit paths of `gsea_leading_edge_details()` and
+  `as_gseaResult()`. The NA-intended fix broke a real downstream
+  contract: `all(rank > 0)` assertions in both the `enrichit` and
+  `enrichplot` test suites collapsed to `NA` (instead of a clean
+  boolean) whenever a pathway had zero in-set weighted magnitude —
+  exactly the YuLab-SMU/DOSE#46 scenario. `rank = 0L` is a better
+  sentinel: downstream index idioms like `geneList[1:rank]` /
+  `seq_len(rank)` still degrade safely to an empty slice rather than
+  throwing a type error on `NA`. The matching assertions in both
+  packages now read `all(rank >= 0L)` with an in-line comment
+  explaining the `0L` semantics.
+  (2026-10-05, Mon, fix regression from review#1 closes commit
+  e354f0b / v0.2.5.9005)
+
 # enrichit 0.2.5.9005
 
 - `as_gseaResult()` / `gsea_leading_edge_details()`: replace the
