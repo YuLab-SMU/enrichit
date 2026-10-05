@@ -1,3 +1,16 @@
+# enrichit 0.2.5.9012
+
+- Shorten the qvalue explanation block printed by each of the four
+  \code{show()} methods (enrichResult, gseaResult, nseaResult,
+  mnseaResult) from six implementation-detail lines down to a single
+  pointer: \emph{"qvalue is not BH/p.adjust; see ?as_gseaResult or
+  ?as_enrichResult for the exact columns"}.  Algorithm references,
+  the Storey vs BH distinction, and the NA-on-failure contract live
+  in the roxygen \code{@return} sections of those constructors
+  (where they belong for \code{?} lookups) rather than being
+  re-printed into the user console on every \code{show(res)}.
+  (2026-10-05, Mon, follow-up on YuLab-SMU/DOSE#24 change 3/3)
+
 # enrichit 0.2.5.9011
 
 - Annotate the significance columns in the user-facing show/print
