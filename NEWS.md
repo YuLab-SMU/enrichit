@@ -1,3 +1,44 @@
+# enrichit 0.2.5.9008
+
+- Add a complete `##'` roxygen documentation block above
+  `gsea_leading_edge_details()` in `R/utilities.R` so that the rank
+  sentinel contract, return-value semantics, and early-exit behavior
+  are now discoverable via `?gsea_leading_edge_details` (internal) and
+  the package NEWS, not only buried in test-case in-line comments.
+  The doc block documents:
+  (a) the three call sites that rely on the helper — `as_gseaResult()`,
+      the NSEA result builder, and the multi-level reconciler;
+  (b) the full `@return` signature (`rank` / `leading_edge` /
+      `core_enrichment`) with explicit warnings that the
+      `leading_edge` string is display-only and must not be parsed
+      downstream;
+  (c) the `rank = 0L` sentinel — when it applies (zero overlap,
+      `N_R == 0`, non-finite running score) and why `NA_integer_` is
+      explicitly forbidden (breaks `seq_len(rank)` slicing and
+      `all(rank >= 0L)` assertions);
+  (d) a `@note` explaining that short-circuits are ordered so that
+      `which.max()` / `which.min()` never fabricate a spurious peak on
+      a zero-signal pathway.
+  This addresses the maintainability-gap concern raised in TRAE Code
+  Review issue I2 — sentinel semantics having already caused two
+  regressions in the v9005/v9006 cycle due to the absence of any
+  contract statement at the function definition.
+  (2026-10-05, Mon, TRAE Code Review closes issue I2 / v0.2.5.9006)
+
+# enrichit 0.2.5.9007
+
+- `test-converters.R` (as_gseaResult fills rank/leading_edge/core_enrichment):
+  harden the `rank`-contract assertions against two silent-regression
+  vectors that were previously left unguarded by the 0.2.5.9006 fix:
+  (1) `expect_type(result$rank, "integer")` now rejects type drift
+      (e.g. numeric `0` or `NA_real_` replacing the `0L` integer sentinel);
+  (2) `expect_false(anyNA(result$rank))` now rejects any accidental
+      re-introduction of an `NA_integer_` sentinel like the one that
+      caused the 0.2.5.9005 regression — failures point directly at the
+      contract violation instead of the cryptic 'expect_true(NA)' error
+      produced by the previous `all(rank >= 0L)` check in isolation.
+  (2026-10-05, Mon, TRAE Code Review closes issue I1 / v0.2.5.9006)
+
 # enrichit 0.2.5.9006
 
 - Revert the `rank = NA_integer_` sentinel introduced in 0.2.5.9005 and

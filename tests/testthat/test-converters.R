@@ -101,6 +101,8 @@ test_that("as_gseaResult fills rank/leading_edge/core_enrichment", {
 
     expect_s4_class(x, "gseaResult")
     expect_true(all(c("rank", "leading_edge", "core_enrichment", "setSize") %in% colnames(x@result)))
+    expect_type(x@result$rank, "integer")
+    expect_false(anyNA(x@result$rank))
     expect_true(all(x@result$rank >= 0L))
     ## rank == 0L is a documented sentinel: "no usable weighted in-set signal
     ## for this pathway" (DOSE#46: N_R=0, empty gene-set overlap, non-finite
