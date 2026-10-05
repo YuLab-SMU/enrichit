@@ -1,95 +1,39 @@
 # enrichit 0.2.5.9012
 
-- Shorten the qvalue explanation block printed by each of the four
-  \code{show()} methods (enrichResult, gseaResult, nseaResult,
-  mnseaResult) from six implementation-detail lines down to a single
-  pointer: \emph{"qvalue is not BH/p.adjust; see ?as_gseaResult or
-  ?as_enrichResult for the exact columns"}.  Algorithm references,
-  the Storey vs BH distinction, and the NA-on-failure contract live
-  in the roxygen \code{@return} sections of those constructors
-  (where they belong for \code{?} lookups) rather than being
-  re-printed into the user console on every \code{show(res)}.
-  (2026-10-05, Mon, follow-up on YuLab-SMU/DOSE#24 change 3/3)
-
-# enrichit 0.2.5.9012
-
-- Shorten the qvalue explanation block printed by each of the four
-  \code{show()} methods (enrichResult, gseaResult, nseaResult,
-  mnseaResult) from six implementation-detail lines down to a single
-  pointer: \emph{"qvalue is not BH/p.adjust; see ?as_gseaResult or
-  ?as_enrichResult for the exact columns"}.  Algorithm references,
-  the Storey vs BH distinction, and the NA-on-failure contract live
-  in the roxygen \code{@return} sections of those constructors
-  (where they belong for \code{?} lookups) rather than being
-  re-printed into the user console on every \code{show(res)}.
-  (2026-10-05, Mon, follow-up on YuLab-SMU/DOSE#24 change 3/3)
-
-# enrichit 0.2.5.9011
-
-- Annotate the significance columns in the user-facing show/print
-  output: each of the four \code{show()} methods (enrichResult,
-  gseaResult, nseaResult, mnseaResult) now prints an extra comment
-  block after \code{#...pvalues adjusted by ...} explaining that
-  \code{qvalue} comes from \code{qvalue::qvalue()} (Storey &
-  Tibshirani, 2003), that failures are left as \code{NA} rather than
-  being silently replaced with \code{p.adjust}, and pointing the
-  user to \code{p.adjust} for guaranteed non-missing downstream
-  filtering/plotting.
-- Update the converter test assertions: \code{expect_false(anyNA(qvalue))}
-  was incompatible with the (documented) NA-on-failure semantics after
-  the removal of the silent \code{p.adjust}-fallback in v0.2.5.9009.
-  The test now asserts \code{expect_type(qvalue, "double")} plus an
-  invariant that the NA pattern in \code{qvalue} exactly matches the
-  output of \code{calculate_qvalue()} on the same pvector — so
-  future regressions (i.e. silent fallbacks sneaking back in) are
-  flagged immediately.  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24,
-  changes 3/3)
-
-# enrichit 0.2.5.9010
-
-- Document the three-column significance layout (pvalue / p.adjust /
-  qvalue) explicitly in the roxygen \code{@return} sections of
-  \code{as_enrichResult()} and \code{as_gseaResult()}.  The doc now
-  distinguishes BH-adjusted p-values from Storey q-values, explains
-  why both columns are kept, and warns that \code{qvalue} remains
-  \code{NA} on estimation failures instead of being silently
-  overwritten with \code{p.adjust}.  (2026-10-05, Mon, addresses
-  YuLab-SMU/DOSE#24, change 2/3)
-
-# enrichit 0.2.5.9010
-
-- Document the three-column significance layout (pvalue / p.adjust /
-  qvalue) explicitly in the roxygen \code{@return} sections of
-  \code{as_enrichResult()} and \code{as_gseaResult()}.  The doc now
-  distinguishes BH-adjusted p-values from Storey q-values, explains
-  why both columns are kept, and warns that \code{qvalue} remains
-  \code{NA} on estimation failures instead of being silently
-  overwritten with \code{p.adjust}.  (2026-10-05, Mon, addresses
-  YuLab-SMU/DOSE#24, change 2/3)
-
-# enrichit 0.2.5.9009
-
 - Remove the silent fallback in the converter pipeline that copied
-  `p.adjust` values into the `qvalue` column whenever
-  `qvalue::qvalue()` failed. The conversion (and the main GSEA/ORA
-  entry points) now keeps `NA` in `qvalue` for failed rows instead of
-  silently making `qvalue` numerically identical to `p.adjust`, which
-  was the direct trigger for the user confusion reported in
-  YuLab-SMU/DOSE#24.  Filter or plot against `p.adjust` explicitly
-  when you need a guaranteed non-missing significance column.
-  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24, change 1/3)
-
-# enrichit 0.2.5.9009
-
-- Remove the silent fallback in the converter pipeline that copied
-  `p.adjust` values into the `qvalue` column whenever
-  `qvalue::qvalue()` failed. The conversion (and the main GSEA/ORA
-  entry points) now keeps `NA` in `qvalue` for failed rows instead of
-  silently making `qvalue` numerically identical to `p.adjust`, which
-  was the direct trigger for the user confusion reported in
-  YuLab-SMU/DOSE#24.  Filter or plot against `p.adjust` explicitly
-  when you need a guaranteed non-missing significance column.
-  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24, change 1/3)
+  \code{p.adjust} values into the \code{qvalue} column whenever
+  \code{qvalue::qvalue()} failed. The conversion (and the main GSEA/ORA
+  entry points) now keeps \code{NA} in \code{qvalue} for failed rows
+  instead of silently making \code{qvalue} numerically identical to
+  \code{p.adjust}, which was the direct trigger for the user confusion
+  reported in YuLab-SMU/DOSE#24.  Filter or plot against \code{p.adjust}
+  explicitly when you need a guaranteed non-missing significance
+  column.
+- Document the three-column significance layout
+  (\code{pvalue} / \code{p.adjust} / \code{qvalue}) explicitly in the
+  roxygen \code{@return} sections of \code{as_enrichResult()} and
+  \code{as_gseaResult()}.  The docs now distinguish BH-adjusted
+  p-values from Storey q-values, explain why both columns are kept, and
+  warn that \code{qvalue} remains \code{NA} on estimation failures
+  instead of being silently overwritten with \code{p.adjust}.
+- Annotate the significance columns in the user-facing \code{show()}
+  output: each of the four methods (enrichResult, gseaResult,
+  nseaResult, mnseaResult) prints a one-line pointer after
+  \code{#...pvalues adjusted by ...} reminding users that
+  \code{qvalue} is not BH/\code{p.adjust} and directing them to
+  \code{?as_gseaResult} / \code{?as_enrichResult} for the full
+  explanation; algorithm references and the NA-on-failure contract are
+  kept in the roxygen docs for \code{?} lookups rather than re-printed
+  on every \code{show(res)}.
+- Update the converter test assertions: the old
+  \code{expect_false(anyNA(qvalue))} was incompatible with the
+  (documented) NA-on-failure semantics introduced above.  The test now
+  asserts \code{expect_type(qvalue, "double")} plus an invariant that
+  the NA pattern in \code{qvalue} exactly matches the output of
+  \code{calculate_qvalue()} on the same pvector — so a future
+  regression (i.e. a silent fallback sneaking back in) is flagged
+  immediately.
+  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24)
 
 # enrichit 0.2.5.9008
 
