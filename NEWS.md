@@ -1,3 +1,22 @@
+# enrichit 0.2.5.9001
+
+- `gsea_leading_edge_details()`: harden the scoreType="std" branch
+  against NA/NaN running scores, mirroring the fix already applied to
+  `gseaScores()` in 0.2.5. Previously, when the weighted hit increments
+  could not be computed (e.g. non-finite gene-level statistics that
+  bypass the main entry-point validation via `as_gseaResult()` or the
+  NSEA pipeline), `max(running)` / `min(running)` returned `NA` and
+  the unguarded `if (abs(max_es) >= abs(min_es))` aborted with
+  "missing value where TRUE/FALSE needed" (the same class of bug
+  tracked in YuLab-SMU/DOSE#46 for `DOSE:::gseaScores`). The function
+  now (1) sums the per-hit weights with `na.rm = TRUE`, (2) bails out
+  early via `any(!is.finite(running))` before peak selection, and
+  (3) guards the classic-GSEA max-vs-min ES comparison with both an
+  `is.finite()` pre-check and `isTRUE()`, so downstream consumers
+  (`gsea_gson()`, NSEA result building, external-result converters)
+  never crash on pathological inputs.
+  (2026-10-04, Sun, closes YuLab-SMU/DOSE#46)
+
 # enrichit 0.2.5.9000
 
 - `gsea_gson()`: added a `reportNA` argument to retain pathways whose

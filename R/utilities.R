@@ -122,12 +122,16 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     if (!isTRUE(all.equal(exponent, 1.0))) {
         weights <- weights^exponent
     }
-    N_R <- sum(weights[in_set])
+    N_R <- sum(weights[in_set], na.rm = TRUE)
     N_miss <- N - N_H
 
     hit_inc <- if (N_R == 0) rep(0, N) else (weights * in_set) / N_R
     miss_inc <- if (N_miss == 0) rep(0, N) else (!in_set) / N_miss
     running <- cumsum(hit_inc) - cumsum(miss_inc)
+
+    if (any(!is.finite(running))) {
+        return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+    }
 
     if (scoreType == "pos") {
         peak_idx <- which.max(running)
@@ -138,7 +142,10 @@ gsea_leading_edge_details <- function(geneList, geneSet, exponent, scoreType) {
     } else {
         max_es <- max(running)
         min_es <- min(running)
-        if (abs(max_es) >= abs(min_es)) {
+        if (!is.finite(max_es) || !is.finite(min_es)) {
+            return(list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%", core_enrichment = ""))
+        }
+        if (isTRUE(abs(max_es) >= abs(min_es))) {
             peak_idx <- which.max(running)
             es <- max_es
         } else {
