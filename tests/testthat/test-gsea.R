@@ -557,3 +557,30 @@ test_that("gsea_gson reportNA filter behaviour with injected NA p-values", {
     expect_true(all(non_na$pvalue   <= 0.05))
     expect_true(all(non_na$p.adjust <= 0.05))
 })
+
+test_that("permutation p-values are conditioned on the ES sign (issue #3)", {
+  # All gene sets are null. Before the fix the numerator counted same-sign
+  # permutations but the denominator was all permutations, so p-values were
+  # roughly halved, capped near 0.5, and the null false-positive rate at 0.05
+  # was about doubled.
+  set.seed(42)
+  gl <- sort(setNames(rnorm(5000), paste0("g", 1:5000)), decreasing = TRUE)
+  gs <- setNames(lapply(1:300, function(i) sample(names(gl), 50)), paste0("S", 1:300))
+
+  res_s <- as.data.frame(gsea(gl, gs, method = "sample", nPerm = 1000,
+                              seed = 1L, verbose = FALSE))
+  expect_true(all(res_s$pvalue > 0 & res_s$pvalue <= 1))
+  expect_true(max(res_s$pvalue) > 0.9)
+  expect_true(mean(res_s$pvalue < 0.05) < 0.10)
+
+  res_p <- as.data.frame(gsea(gl, gs[1:200], method = "permute", nPerm = 500,
+                              seed = 1L, verbose = FALSE))
+  expect_true(all(res_p$pvalue > 0 & res_p$pvalue <= 1))
+  expect_true(max(res_p$pvalue) > 0.9)
+  expect_true(mean(res_p$pvalue < 0.05) < 0.10)
+
+  res_a <- as.data.frame(gsea(gl, gs[1:200], method = "sample", adaptive = TRUE,
+                              minPerm = 101, maxPerm = 2000, pvalThreshold = 0.1,
+                              seed = 1L, verbose = FALSE))
+  expect_true(all(res_a$pvalue > 0 & res_a$pvalue <= 1))
+})

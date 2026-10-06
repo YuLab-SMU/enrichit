@@ -319,24 +319,25 @@ Rcpp::DataFrame gsea(const Rcpp::NumericVector& stats,
             continue;
         }
         
-        int count_better = 0;
+        int count_ge_es = 0;
+        int count_le_es = 0;
         double sum_pos_es = 0.0;
         double sum_neg_es = 0.0;
         int count_pos = 0;
         int count_neg = 0;
-        
+
         for (int p = 0; p < nPerm; ++p) {
             double pes = perm_es[i][p];
-            if (obs_es > 0) {
-                if (pes >= obs_es) count_better++;
-                if (pes >= 0) { sum_pos_es += pes; count_pos++; }
-            } else {
-                if (pes <= obs_es) count_better++;
-                if (pes < 0) { sum_neg_es += pes; count_neg++; }
-            }
+            if (pes >= obs_es) count_ge_es++;
+            if (pes <= obs_es) count_le_es++;
+            if (pes >= 0) { sum_pos_es += pes; count_pos++; }
+            else { sum_neg_es += pes; count_neg++; }
         }
-        
-        pvalues[i] = (double)(count_better + 1) / (double)(nPerm + 1);
+
+        // Sign-conditioned p-value (same-side denominator), as in fgsea and the multilevel engine.
+        double p_ge = (count_ge_es + 1.0) / (count_pos + 1.0);
+        double p_le = (count_le_es + 1.0) / (count_neg + 1.0);
+        pvalues[i] = std::min(p_le, p_ge);
         
         if (obs_es > 0) {
             double mean_pos = (count_pos > 0) ? (sum_pos_es / count_pos) : 1.0;
@@ -462,7 +463,8 @@ Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
         std::mt19937 rng(static_cast<uint32_t>(seed + i * 1000));
         
         int total_perms = 0;
-        int count_better = 0;
+        int count_ge_es = 0;
+        int count_le_es = 0;
         double sum_pos_es = 0.0;
         double sum_neg_es = 0.0;
         int count_pos = 0;
@@ -502,19 +504,19 @@ Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
                 }
                 
                 // Update counts
-                if (obs_es > 0) {
-                    if (perm_es >= obs_es) count_better++;
-                    if (perm_es >= 0) { sum_pos_es += perm_es; count_pos++; }
-                } else {
-                    if (perm_es <= obs_es) count_better++;
-                    if (perm_es < 0) { sum_neg_es += perm_es; count_neg++; }
-                }
+                if (perm_es >= obs_es) count_ge_es++;
+                if (perm_es <= obs_es) count_le_es++;
+                if (perm_es >= 0) { sum_pos_es += perm_es; count_pos++; }
+                else { sum_neg_es += perm_es; count_neg++; }
             }
             
             total_perms += batch_size;
             
             // Calculate current p-value
-            double current_pval = (double)(count_better + 1) / (double)(total_perms + 1);
+            double current_pval = std::min(
+                (count_le_es + 1.0) / (count_neg + 1.0),
+                (count_ge_es + 1.0) / (count_pos + 1.0)
+            );
             
             // Early stopping conditions
             if (total_perms >= minPerm) {
@@ -533,7 +535,10 @@ Rcpp::DataFrame gsea_adaptive(const Rcpp::NumericVector& stats,
         }
         
         // Final p-value and NES calculation
-        pvalues[i] = (double)(count_better + 1) / (double)(total_perms + 1);
+        pvalues[i] = std::min(
+            (count_le_es + 1.0) / (count_neg + 1.0),
+            (count_ge_es + 1.0) / (count_pos + 1.0)
+        );
         actual_perms[i] = total_perms;
         
         if (obs_es > 0) {

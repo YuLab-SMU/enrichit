@@ -19,7 +19,9 @@
 #' - **ID**: Gene set name
 #' - **enrichmentScore**: Enrichment Score
 #' - **NES**: Normalized Enrichment Score
-#' - **pvalue**: Empirical p-value from permutation test
+#' - **pvalue**: Empirical p-value from the permutation test, conditioned on
+#'   the sign of the enrichment score: the denominator counts only permutations
+#'   on the same side of zero as the observed ES (fgsea convention)
 #' - **setSize**: Size of the gene set (number of genes found in geneList)
 #' - **nPerm**: (adaptive mode only) Actual number of permutations used
 #' - **rank**: Rank at which the maximum enrichment score is attained

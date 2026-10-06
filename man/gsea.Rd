@@ -73,7 +73,9 @@ A data.frame with columns:
 \item \strong{ID}: Gene set name
 \item \strong{enrichmentScore}: Enrichment Score
 \item \strong{NES}: Normalized Enrichment Score
-\item \strong{pvalue}: Empirical p-value from permutation test
+\item \strong{pvalue}: Empirical p-value from the permutation test, conditioned on
+the sign of the enrichment score: the denominator counts only permutations
+on the same side of zero as the observed ES (fgsea convention)
 \item \strong{setSize}: Size of the gene set (number of genes found in geneList)
 \item \strong{nPerm}: (adaptive mode only) Actual number of permutations used
 \item \strong{rank}: Rank at which the maximum enrichment score is attained
