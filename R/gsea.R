@@ -14,14 +14,21 @@
 #'   when \code{seed = FALSE}) makes the result reproducible.
 #' @param nPermSimple Number of permutations for the simple method (default: 1000).
 #' @param scoreType Type of enrichment score calculation: "std", "pos", "neg" (default: "std").
+#'   Only honoured by \code{method = "multilevel"}; fixed and adaptive
+#'   permutation paths currently use the standard two-sided score.
 #'
 #' @return A data.frame with columns:
 #' - **ID**: Gene set name
 #' - **enrichmentScore**: Enrichment Score
 #' - **NES**: Normalized Enrichment Score
-#' - **pvalue**: Empirical p-value from the permutation test, conditioned on
-#'   the sign of the enrichment score: the denominator counts only permutations
-#'   on the same side of zero as the observed ES (fgsea convention)
+#' - **pvalue**: Empirical p-value from the permutation test. With the default
+#'   two-sided \code{scoreType = "std"}, the denominator counts only
+#'   permutations on the same side of zero as the observed ES (fgsea
+#'   convention). The \code{"pos"}/\code{"neg"} score types are supported by
+#'   the multilevel engine; fixed and adaptive permutation paths currently use
+#'   the two-sided ES calculation. For fixed or adaptive permutation runs,
+#'   the smallest estimable p-value is determined by the number of same-side
+#'   null permutations, not by the total number of permutations.
 #' - **setSize**: Size of the gene set (number of genes found in geneList)
 #' - **nPerm**: (adaptive mode only) Actual number of permutations used
 #' - **rank**: Rank at which the maximum enrichment score is attained
@@ -96,6 +103,12 @@ gsea <- function(geneList, gene_sets,
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
     scoreType <- match.arg(scoreType, c("std", "pos", "neg"))
+    if (scoreType != "std" && method != "multilevel") {
+        warning(
+            "scoreType = \"", scoreType, "\" is only supported by method = \"multilevel\"; ",
+            "method = \"", method, "\" uses the standard two-sided ES calculation."
+        )
+    }
 
     prepared <- prepare_gsea_inputs(geneList, scoreType, exponent)
     geneList <- prepared$geneList

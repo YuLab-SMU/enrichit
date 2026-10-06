@@ -35,6 +35,10 @@ test_that("GSEA function works correctly with both methods", {
   top_res <- res_sample[res_sample$ID == "TopEnriched", ]
   expect_gt(top_res$enrichmentScore, 0)
   expect_lt(top_res$pvalue, 0.05)
+
+  bottom_res <- res_sample[res_sample$ID == "BottomEnriched", ]
+  expect_lt(bottom_res$enrichmentScore, 0)
+  expect_lt(bottom_res$pvalue, 0.05)
   
   # Test "permute" method
   res_permute <- gsea(geneList = stats, gene_sets = gene_sets, nPerm = 100, method = "permute")
@@ -44,6 +48,10 @@ test_that("GSEA function works correctly with both methods", {
   top_res_perm <- res_permute[res_permute$ID == "TopEnriched", ]
   expect_gt(top_res_perm$enrichmentScore, 0)
   expect_lt(top_res_perm$pvalue, 0.05)
+
+  bottom_res_perm <- res_permute[res_permute$ID == "BottomEnriched", ]
+  expect_lt(bottom_res_perm$enrichmentScore, 0)
+  expect_lt(bottom_res_perm$pvalue, 0.05)
   
   # Compare NES (sample method usually produces higher NES magnitude for enriched sets)
   # Note: with small nPerm and synthetic data, this might not always hold, but generally true.
@@ -52,6 +60,23 @@ test_that("GSEA function works correctly with both methods", {
   
   # Check that method argument validation works
   expect_error(gsea(geneList = stats, gene_sets = gene_sets, method = "invalid"))
+})
+
+test_that("fixed and adaptive engines warn when scoreType is not supported", {
+  stats <- sort(setNames(rnorm(200), paste0("Gene", 1:200)), decreasing = TRUE)
+  gene_sets <- list(Top = names(stats)[1:20], Bottom = names(stats)[181:200])
+
+  expect_warning(
+    gsea(stats, gene_sets, method = "sample", scoreType = "pos",
+         nPerm = 50, minGSSize = 1, maxGSSize = 200, verbose = FALSE),
+    "only supported by method"
+  )
+  expect_warning(
+    gsea(stats, gene_sets, method = "sample", adaptive = TRUE,
+         scoreType = "neg", minPerm = 20, maxPerm = 40,
+         minGSSize = 1, maxGSSize = 200, verbose = FALSE),
+    "only supported by method"
+  )
 })
 
 test_that("Adaptive GSEA works correctly", {
@@ -570,17 +595,22 @@ test_that("permutation p-values are conditioned on the ES sign (issue #3)", {
   res_s <- as.data.frame(gsea(gl, gs, method = "sample", nPerm = 1000,
                               seed = 1L, verbose = FALSE))
   expect_true(all(res_s$pvalue > 0 & res_s$pvalue <= 1))
-  expect_true(max(res_s$pvalue) > 0.9)
-  expect_true(mean(res_s$pvalue < 0.05) < 0.10)
+  expect_gt(max(res_s$pvalue), 0.9)
+  expect_gt(median(res_s$pvalue), 0.4)
+  expect_lt(mean(res_s$pvalue < 0.05), 0.075)
 
   res_p <- as.data.frame(gsea(gl, gs[1:200], method = "permute", nPerm = 500,
                               seed = 1L, verbose = FALSE))
   expect_true(all(res_p$pvalue > 0 & res_p$pvalue <= 1))
-  expect_true(max(res_p$pvalue) > 0.9)
-  expect_true(mean(res_p$pvalue < 0.05) < 0.10)
+  expect_gt(max(res_p$pvalue), 0.9)
+  expect_gt(median(res_p$pvalue), 0.4)
+  expect_lt(mean(res_p$pvalue < 0.05), 0.075)
 
   res_a <- as.data.frame(gsea(gl, gs[1:200], method = "sample", adaptive = TRUE,
                               minPerm = 101, maxPerm = 2000, pvalThreshold = 0.1,
                               seed = 1L, verbose = FALSE))
   expect_true(all(res_a$pvalue > 0 & res_a$pvalue <= 1))
+  expect_gt(max(res_a$pvalue), 0.9)
+  expect_gt(median(res_a$pvalue), 0.4)
+  expect_lt(mean(res_a$pvalue < 0.05), 0.075)
 })

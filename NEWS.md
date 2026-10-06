@@ -1,12 +1,12 @@
 # enrichit 0.2.6
 
 - fix permutation-based GSEA p-values in the fixed and adaptive engines
-  (`method = "sample"` / `"permute"`): the numerator counted only same-sign
+  (`method = "sample"` / `"permute"`) for the default two-sided
+  (`scoreType = "std"`) calculation: the numerator counted only same-sign
   permutations while the denominator divided by all permutations, so p-values
-  were roughly halved, capped near 0.5, and the null false-positive rate at
-  0.05 was about doubled; the denominator now counts only permutations on the
-  same side of zero as the observed ES, matching fgsea and the multilevel
-  engine
+  were too small under a symmetric null; the denominator now counts only
+  permutations on the same side of zero as the observed ES, following the
+  main fgsea convention
   (2026-10-06, Tue, closes #3)
 - update the `RcppEigen` sparse-matrix interface in `rwr_eigen_cpp()`
   from `MappedSparseMatrix` to `Map<SparseMatrix>` for Eigen 5

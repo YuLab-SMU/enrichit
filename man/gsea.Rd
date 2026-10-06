@@ -63,7 +63,9 @@ when \code{seed = FALSE}) makes the result reproducible.}
 
 \item{nPermSimple}{Number of permutations for the simple method (default: 1000).}
 
-\item{scoreType}{Type of enrichment score calculation: "std", "pos", "neg" (default: "std").}
+\item{scoreType}{Type of enrichment score calculation: "std", "pos", "neg" (default: "std").
+Only honoured by \code{method = "multilevel"}; fixed and adaptive
+permutation paths currently use the standard two-sided score.}
 
 \item{verbose}{Logical. Print progress messages.}
 }
@@ -73,9 +75,14 @@ A data.frame with columns:
 \item \strong{ID}: Gene set name
 \item \strong{enrichmentScore}: Enrichment Score
 \item \strong{NES}: Normalized Enrichment Score
-\item \strong{pvalue}: Empirical p-value from the permutation test, conditioned on
-the sign of the enrichment score: the denominator counts only permutations
-on the same side of zero as the observed ES (fgsea convention)
+\item \strong{pvalue}: Empirical p-value from the permutation test. With the default
+two-sided \code{scoreType = "std"}, the denominator counts only
+permutations on the same side of zero as the observed ES (fgsea
+convention). The \code{"pos"}/\code{"neg"} score types are supported by
+the multilevel engine; fixed and adaptive permutation paths currently use
+the two-sided ES calculation. For fixed or adaptive permutation runs,
+the smallest estimable p-value is determined by the number of same-side
+null permutations, not by the total number of permutations.
 \item \strong{setSize}: Size of the gene set (number of genes found in geneList)
 \item \strong{nPerm}: (adaptive mode only) Actual number of permutations used
 \item \strong{rank}: Rank at which the maximum enrichment score is attained
