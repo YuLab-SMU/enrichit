@@ -15,7 +15,7 @@ using namespace Rcpp;
 //' @return list containing stationary probabilities and iterations
 //' @noRd
 // [[Rcpp::export]]
-Rcpp::List rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, 
+Rcpp::List rwr_eigen_cpp(const Eigen::Map<Eigen::SparseMatrix<double>>& A,
                             const Eigen::Map<Eigen::VectorXd>& v, 
                             double restart, 
                             double threshold, 
