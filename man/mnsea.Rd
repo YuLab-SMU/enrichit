@@ -63,7 +63,13 @@ mnsea(
 \item{...}{additional arguments passed to \code{gsea()}.}
 }
 \value{
-A \code{mnseaResult} object.
+A \code{mnseaResult} object. The \code{result} slot carries the three
+significance columns \code{pvalue}, \code{p.adjust}, and \code{qvalue}: raw
+nominal p-values, BH-style multiple-testing adjusted p-values (via
+\code{stats::p.adjust()}; default \code{pAdjustMethod = "BH"} when
+applicable), and Storey q-values (via \code{qvalue::qvalue()}). If
+q-value estimation fails, \code{qvalue} remains \code{NA}. See
+\code{?as_gseaResult} for the full column semantics.
 }
 \description{
 Multi-layer Network-based Gene Set Enrichment Analysis

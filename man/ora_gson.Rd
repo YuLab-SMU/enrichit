@@ -37,7 +37,13 @@ Users can set \code{options(enrichment_force_universe = TRUE)} to force the 'uni
 \item{gson}{A GSON object containing gene set information.}
 }
 \value{
-A \code{enrichResult} instance.
+A \code{enrichResult} instance. The \code{result} slot carries the three
+significance columns \code{pvalue}, \code{p.adjust}, and \code{qvalue}:
+raw nominal p-values, BH-style multiple-testing adjusted p-values
+(via \code{stats::p.adjust()}; default \code{pAdjustMethod = "BH"}), and
+Storey q-values (via \code{qvalue::qvalue()}). If q-value estimation
+fails, \code{qvalue} remains \code{NA}. See \code{?as_enrichResult} for the full
+column semantics.
 }
 \description{
 interal method for enrichment analysis

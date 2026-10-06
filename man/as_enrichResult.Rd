@@ -44,7 +44,30 @@ union of \code{geneSets} when available.}
 \code{p.adjust} is missing.}
 }
 \value{
-An \code{enrichResult} object
+An \code{enrichResult} object.  The significance columns are
+always laid out in the same three-column convention:
+\describe{
+\item{\code{pvalue}}{Raw nominal p-value (no multiplicity
+correction) supplied by the source analysis. For native
+\pkg{enrichit} ORA this is typically Fisher's exact; for
+imported external results it reflects the method used by the
+source tool.}
+\item{\code{p.adjust}}{\code{stats::p.adjust(pvalue, method =
+      pAdjustMethod)}; default \code{"BH"} for Benjamini & Hochberg
+(1995) step-up false discovery rate control. Because no
+\eqn{\pi_0} is estimated, BH-adjusted p-values are typically
+\strong{>=} the Storey q-values on the same data.}
+\item{\code{qvalue}}{Storey & Tibshirani (2003) positive FDR
+estimate computed through the \pkg{qvalue} package.
+\eqn{\pi_0} (the proportion of tests drawn from the null) is
+estimated from the empirical p-value distribution, so
+q-values are typically smaller than BH-\code{p.adjust} under a
+non-null majority. If estimation fails (e.g. \code{qvalue} is
+not installed, \eqn{\pi_0} estimation fails, or too few
+p-values are provided), \code{qvalue} is left as \code{NA}.
+Use \code{p.adjust} when you need a complete significance
+column for downstream work.}
+}
 }
 \description{
 Convert a result table to an \code{enrichResult} object

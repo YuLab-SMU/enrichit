@@ -1,95 +1,19 @@
-# enrichit 0.2.5.9013
+# enrichit 0.2.6
 
-- `gsea_gson()` gains a `reportNA` argument to retain pathways whose
-  multilevel p-values are `NA` under unbalanced gene-level statistics.
-  Combine with `pvalueCutoff = 1` to retrieve every gene set that
-  passes the size filter, including those with NA significance.
-  Default `reportNA = FALSE` preserves the historical behaviour of
-  dropping NA rows.
-  (2026-10-04, Sun, closes YuLab-SMU/DOSE#88)
-
-- Harden the GSEA leading-edge pipeline against the class of bugs
-  tracked in YuLab-SMU/DOSE#46 ("missing value where TRUE/FALSE
-  needed" after running scores collapse to NA). All changes apply
-  consistently across the main `gsea()` loop, the NSEA and
-  multi-level result builders, and the `as_gseaResult()` converter:
-  - `gsea_leading_edge_details()` in `R/utilities.R` now sums the
-    weighted in-set contribution with `na.rm = TRUE`, short-circuits
-    on `any(!is.finite(running))` *before* peak selection, enforces
-    the same entry-point contract as `gseaScores()` (named numeric,
-    all finite — so an invalid input stops loudly at the helper
-    boundary instead of leaking NaN three steps downstream), bails
-    out on `N_R == 0` rather than letting `which.max()` fabricate a
-    spurious peak from a pure-negative all-zero-hit curve, and
-    replaces the unreachable `is.finite()` pre-check on
-    `max_es`/`min_es` (dead code after the global running-score
-    guard) with an explicit `stopifnot` invariant. The canonical
-    no-signal sentinel returned on every early-exit branch is
-    `list(rank = 0L, leading_edge = "tags=0%, list=0%, signal=0%",
-    core_enrichment = "")` — `rank = 0L` degrades safely to an empty
-    slice when downstream code writes `geneList[1:rank]` or
-    `seq_len(rank)`, whereas `NA_integer_` would abort on indexing.
-  - `as_gseaResult.default()` keeps the no-gene-overlap short-circuit
-    introduced for DOSE#46 (skip `gsea_leading_edge_details()`
-    entirely when the pathway shares no gene with
-    `names(geneList)`) and returns the same `rank = 0L` sentinel,
-    aligned with the helper contract.
-  - Converter tests in `tests/testthat/test-converters.R` now assert
-    the full rank contract in order: `expect_type(rank, "integer")`,
-    `expect_false(anyNA(rank))`, `expect_true(all(rank >= 0L))`. The
-    last check is annotated with an in-line comment explaining the
-    `0L` sentinel semantics so the contract is visible at the test
-    site as well as in the helper documentation.
-  (2026-10-04–2026-10-05, Sun–Mon, closes YuLab-SMU/DOSE#46)
-
-- Publish the `gsea_leading_edge_details()` contract as a complete
-  `##'` roxygen block in `R/utilities.R` (previously the semantics
-  existed only in test comments and commit messages). The block
-  documents the three cross-file callers — `as_gseaResult()`, the
-  NSEA result builder, the multi-level reconciler — the full list
-  return shape (`rank` / `leading_edge` / `core_enrichment`), the
-  exact `rank = 0L` sentinel trigger conditions (zero overlap,
-  `N_R == 0`, non-finite running score) with an explicit warning
-  that `NA_integer_` is forbidden because it breaks
-  `seq_len(rank)`-style slicing and `all(rank >= 0L)` comparisons,
-  a note that the `leading_edge` `tags=X%, list=Y%, signal=Z%`
-  string is a display label only and must not be parsed
-  downstream (use the `"/"`-joined `core_enrichment` field instead),
-  and a `@note` explaining why short-circuits are ordered ahead of
-  `which.max()`/`which.min()`.
-  (2026-10-05, Mon, TRAE Code Review closes issue I2)
-
-- Address the user confusion reported in YuLab-SMU/DOSE#24 about the
-  relationship between the three significance columns in converter
-  and main-pipeline output:
-  - Remove the silent fallback in the converter pipeline that copied
-    \code{p.adjust} values into the \code{qvalue} column whenever
-    \code{qvalue::qvalue()} failed. The conversion (and the main
-    GSEA/ORA entry points) now keeps \code{NA} in \code{qvalue} for
-    failed rows instead of silently making \code{qvalue} numerically
-    identical to \code{p.adjust}.  Filter or plot against
-    \code{p.adjust} explicitly when you need a guaranteed
-    non-missing significance column.
-  - Document the three-column significance layout
-    (\code{pvalue} / \code{p.adjust} / \code{qvalue}) explicitly in
-    the roxygen \code{@return} sections of \code{as_enrichResult()}
-    and \code{as_gseaResult()}.  The docs now distinguish BH-adjusted
-    p-values from Storey q-values, explain why both columns are kept,
-    and warn that \code{qvalue} remains \code{NA} on estimation
-    failures instead of being silently overwritten with
-    \code{p.adjust}.  Column-level descriptions live here (reachable
-    via \code{?as_gseaResult} / \code{?as_enrichResult}); the
-    \code{show()} methods stick to printing a compact object summary
-    and do not explain individual columns.
-  - Update the converter test assertions: the old
-    \code{expect_false(anyNA(qvalue))} was incompatible with the
-    (documented) NA-on-failure semantics introduced above.  The test
-    now asserts \code{expect_type(qvalue, "double")} plus an
-    invariant that the NA pattern in \code{qvalue} exactly matches
-    the output of \code{calculate_qvalue()} on the same pvector — so
-    a future regression (i.e. a silent fallback sneaking back in) is
-    flagged immediately.
-  (2026-10-05, Mon, addresses YuLab-SMU/DOSE#24)
+- add a `reportNA` argument to `gsea_gson()` so pathways with `NA`
+  multilevel p-values can be retained when needed
+  (2026-10-04, Sun, closes DOSE#88)
+- fix GSEA leading-edge edge cases by standardizing the `rank = 0L`
+  sentinel for zero-overlap, `N_R == 0`, and non-finite running-score
+  paths; align `as_gseaResult()` with the same contract; document the
+  `gsea_leading_edge_details()` return contract; and tighten converter
+  tests for the rank contract
+  (2026-10-04–2026-10-05, Sun–Mon, closes DOSE#46)
+- keep `qvalue` as `NA` when estimation fails instead of falling back
+  to `p.adjust`, document the `pvalue` / `p.adjust` / `qvalue`
+  semantics in `as_enrichResult()` and `as_gseaResult()`, and update
+  converter tests accordingly
+  (2026-10-05, Mon, addresses DOSE#24)
 
 # enrichit 0.2.5
 
@@ -107,9 +31,9 @@
 # enrichit 0.2.3
 
 - calibrate NSEA significance testing by switching the default to a whole-pipeline permutation null instead of GSEA's label-permutation test (2026-08-23, Sun)
-  - the legacy `nsea()`/`nsea_gson()` pipeline ran GSEA's label-permutation test on the network-diffused scores; because network diffusion induces strong autocorrelation between neighbouring genes' scores, that test violates the exchangeability assumption of GSEA's permutation null and produces anti-conservative p-values (empirically \~2.5x the nominal false-positive rate)
+  - the legacy `nsea()`/`nsea_gson()` pipeline ran GSEA's label-permutation test on the network-diffused scores; because network diffusion induces strong autocorrelation between neighbouring genes' scores, that test violates the exchangeability assumption of GSEA's permutation null and produces anti-conservative p-values (empirically ~2.5x the nominal false-positive rate)
   - `significance = "whole_pipeline"` (new default) builds the null distribution of the enrichment score by re-running the *entire* pipeline under the null: permute gene labels -> re-diffuse over the network with RWR -> recompute the enrichment score; p-values and NES are then derived from this null, automatically accounting for the smoothing induced by diffusion
-  - `significance = "internal"` retains the legacy behaviour (GSEA's internal label-permutation test on the diffused scores), kept for comparison/debugging
+  - `significance = "internal"` keeps the earlier internal label-permutation formulation on the diffused scores
 - add `significance`, `nPerm`, `seed` and `exponent` arguments to `nsea()` and `nsea_gson()`; expose `pvalueCutoff` and `pAdjustMethod` in `nsea_gson()`
   - `nPerm` (default 1000) sets the number of whole-pipeline permutations; the smallest estimable p-value is `1/(nPerm + 1)`
   - `seed` (default NULL) makes the whole-pipeline null reproducible; set a numeric seed for deterministic results
@@ -267,4 +191,3 @@
 
 - `ora` function (2025-12-03, Wed)
   - Fast Over-Representation Analysis (ORA) using C\++ via Rcpp.
-

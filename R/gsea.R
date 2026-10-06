@@ -283,11 +283,17 @@ scale_fgsea_ranks <- function(geneList, exponent) {
 #'   clusterProfiler/DOSE behavior (default: 0.05).
 #' @param reportNA If \code{TRUE}, pathways with \code{NA} p-values (produced
 #'   by the multilevel method when gene-level statistics are unbalanced) are
-#'   retained in the result instead of being silently dropped. Useful with
-#'   \code{pvalueCutoff = 1} to inspect the complete set of tested pathways.
-#'   Default: \code{FALSE} (historical behaviour).
+#'   retained in the result. Useful with \code{pvalueCutoff = 1} to inspect
+#'   the complete set of tested pathways. Default: \code{FALSE}, which
+#'   excludes \code{NA} rows from the reported result.
 #' @param ... Additional parameters passed to gsea()
-#' @return gseaResult object
+#' @return A `gseaResult` object. The `result` slot carries the three
+#'   significance columns `pvalue`, `p.adjust`, and `qvalue`:
+#'   raw nominal p-values, BH-style multiple-testing adjusted p-values
+#'   (via `stats::p.adjust()`; default `pAdjustMethod = "BH"`), and
+#'   Storey q-values (via `qvalue::qvalue()`). If q-value estimation
+#'   fails, `qvalue` remains `NA`. See `?as_gseaResult` for the full
+#'   column semantics.
 #' @author Guangchuang Yu
 #' @export
 gsea_gson <- function(geneList,
@@ -462,5 +468,3 @@ gsea_gson <- function(geneList,
               
     return(res)
 }
-
-

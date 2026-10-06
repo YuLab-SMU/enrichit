@@ -46,14 +46,32 @@ running-score plots will only be approximate.}
 \code{p.adjust} is missing.}
 }
 \value{
-A \code{gseaResult} object
+A \code{gseaResult} object.  The \code{result} slot carries
+the same three-column significance layout documented in the
+\code{as_enrichResult} \code{@return} section:
+\describe{
+\item{\code{pvalue}}{Raw nominal p-value from the chosen GSEA
+permutation or multilevel null.}
+\item{\code{p.adjust}}{\code{stats::p.adjust(pvalue, method =
+      pAdjustMethod)} (default \code{"BH"}). BH-adjusted p-values
+are typically \strong{>=} the Storey q-value on the same
+data.}
+\item{\code{qvalue}}{Storey & Tibshirani (2003) pFDR estimate
+computed through the \pkg{qvalue} package. \eqn{\pi_0} is
+estimated from the empirical p-value distribution, so
+q-values are typically smaller than BH-\code{p.adjust} under a
+non-null majority. If estimation fails, \code{qvalue} is left
+as \code{NA}; use \code{p.adjust} when you need a complete
+significance column.}
+}
+See the \code{as_enrichResult} man page for the full explanation.
 }
 \description{
 Convert a result table to a \code{gseaResult} object
 }
 \details{
 Generic constructor for pre-ranked GSEA results produced by other tools
-(e.g. 'fgsea', Broad GSEA reports).  The ranked gene statistics must be
+(e.g. 'fgsea' or GSEA reports).  The ranked gene statistics must be
 supplied separately as \code{geneList}; the result table alone cannot be
 converted because most GSEA visualizations consume the ranked list.
 }

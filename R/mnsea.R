@@ -431,7 +431,13 @@ collapse_multilayer_scores <- function(x,
 #' @param verbose logical.
 #' @param ... additional arguments passed to `gsea()`.
 #'
-#' @return A `mnseaResult` object.
+#' @return A `mnseaResult` object. The `result` slot carries the three
+#'   significance columns `pvalue`, `p.adjust`, and `qvalue`: raw
+#'   nominal p-values, BH-style multiple-testing adjusted p-values (via
+#'   `stats::p.adjust()`; default `pAdjustMethod = "BH"` when
+#'   applicable), and Storey q-values (via `qvalue::qvalue()`). If
+#'   q-value estimation fails, `qvalue` remains `NA`. See
+#'   `?as_gseaResult` for the full column semantics.
 #' @export
 mnsea <- function(seed_list,
                   networks,
@@ -560,7 +566,13 @@ mnsea <- function(seed_list,
 #' @param verbose logical.
 #' @param ... additional arguments passed to `gsea_gson()`.
 #'
-#' @return A `mnseaResult` object.
+#' @return A `mnseaResult` object. The `result` slot carries the three
+#'   significance columns `pvalue`, `p.adjust`, and `qvalue`: raw
+#'   nominal p-values, BH-style multiple-testing adjusted p-values (via
+#'   `stats::p.adjust()`; default `pAdjustMethod = "BH"` when
+#'   applicable), and Storey q-values (via `qvalue::qvalue()`). If
+#'   q-value estimation fails, `qvalue` remains `NA`. See
+#'   `?as_gseaResult` for the full column semantics.
 #' @export
 mnsea_gson <- function(seed_list,
                        networks,

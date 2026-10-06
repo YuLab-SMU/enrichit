@@ -63,14 +63,20 @@ clusterProfiler/DOSE behavior (default: 0.05).}
 
 \item{reportNA}{If \code{TRUE}, pathways with \code{NA} p-values (produced
 by the multilevel method when gene-level statistics are unbalanced) are
-retained in the result instead of being silently dropped. Useful with
-\code{pvalueCutoff = 1} to inspect the complete set of tested pathways.
-Default: \code{FALSE} (historical behaviour).}
+retained in the result. Useful with \code{pvalueCutoff = 1} to inspect
+the complete set of tested pathways. Default: \code{FALSE}, which
+excludes \code{NA} rows from the reported result.}
 
 \item{...}{Additional parameters passed to gsea()}
 }
 \value{
-gseaResult object
+A \code{gseaResult} object. The \code{result} slot carries the three
+significance columns \code{pvalue}, \code{p.adjust}, and \code{qvalue}:
+raw nominal p-values, BH-style multiple-testing adjusted p-values
+(via \code{stats::p.adjust()}; default \code{pAdjustMethod = "BH"}), and
+Storey q-values (via \code{qvalue::qvalue()}). If q-value estimation
+fails, \code{qvalue} remains \code{NA}. See \code{?as_gseaResult} for the full
+column semantics.
 }
 \description{
 generic function for gene set enrichment analysis

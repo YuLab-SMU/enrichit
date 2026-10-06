@@ -8,7 +8,13 @@
 #' Users can set `options(enrichment_force_universe = TRUE)` to force the 'universe' untouched.
 #' @param weight A named numeric vector of weights for background genes. If provided, Weighted ORA will be performed.
 #' @inheritParams enrichit_params
-#' @return  A `enrichResult` instance.
+#' @return A `enrichResult` instance. The `result` slot carries the three
+#'   significance columns `pvalue`, `p.adjust`, and `qvalue`:
+#'   raw nominal p-values, BH-style multiple-testing adjusted p-values
+#'   (via `stats::p.adjust()`; default `pAdjustMethod = "BH"`), and
+#'   Storey q-values (via `qvalue::qvalue()`). If q-value estimation
+#'   fails, `qvalue` remains `NA`. See `?as_enrichResult` for the full
+#'   column semantics.
 #' @importClassesFrom methods data.frame
 #' @importFrom methods new
 #' @importFrom stats p.adjust
@@ -242,5 +248,3 @@ ora_gson <- function(gene,
              
     return(x)
 }
-
-

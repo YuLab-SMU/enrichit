@@ -48,9 +48,9 @@ nsea(
 "whole_pipeline" computes p-values and NES from a permutation null that
 re-runs the full pipeline (permute gene labels -> re-diffuse -> recompute
 enrichment scores) and is statistically calibrated. "internal" runs GSEA's
-internal label-permutation test on the diffused scores; this is the legacy
-behaviour and is \strong{anti-conservative} (it ignores the correlation induced
-by network diffusion) — use it only for comparison/debugging.}
+internal label-permutation test on the diffused scores and does not model
+the dependence introduced by network diffusion; it is retained as the
+earlier formulation.}
 
 \item{nPerm}{number of whole-pipeline permutations used to estimate p-values
 and NES (default: 1000). The smallest estimable p-value is 1/(nPerm + 1).}
@@ -67,7 +67,13 @@ current R RNG state). Set a numeric seed for reproducible results.}
 \code{significance = "whole_pipeline"} additional arguments are ignored.}
 }
 \value{
-A \code{nseaResult} object of NSEA results.
+A \code{nseaResult} object of NSEA results. The \code{result} slot
+carries the three significance columns \code{pvalue}, \code{p.adjust}, and
+\code{qvalue}: raw nominal p-values, BH-style multiple-testing adjusted
+p-values (via \code{stats::p.adjust()}; default
+\code{pAdjustMethod = "BH"}), and Storey q-values (via
+\code{qvalue::qvalue()}). If q-value estimation fails, \code{qvalue}
+remains \code{NA}. See \code{?as_gseaResult} for the full column semantics.
 }
 \description{
 Network-based Gene Set Enrichment Analysis
