@@ -112,12 +112,12 @@ BEGIN_RCPP
 END_RCPP
 }
 // rwr_eigen_cpp
-Rcpp::List rwr_eigen_cpp(const Eigen::MappedSparseMatrix<double>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
+Rcpp::List rwr_eigen_cpp(const Eigen::Map<Eigen::SparseMatrix<double>>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
 RcppExport SEXP _enrichit_rwr_eigen_cpp(SEXP ASEXP, SEXP vSEXP, SEXP restartSEXP, SEXP thresholdSEXP, SEXP max_iterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Eigen::MappedSparseMatrix<double>& >::type A(ASEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::SparseMatrix<double>>& >::type A(ASEXP);
     Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd>& >::type v(vSEXP);
     Rcpp::traits::input_parameter< double >::type restart(restartSEXP);
     Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
