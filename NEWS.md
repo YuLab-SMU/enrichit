@@ -1,3 +1,22 @@
+# enrichit 0.2.6.9000
+
+- add DESeq2 adapters `as_ranked()` and `as_genes()`: S3 generics with
+  methods for `DESeqResults` and (fitted) `DESeqDataSet` objects
+  - `as_ranked()` extracts a descending-sorted statistic vector for
+    `gsea()`: the Wald `stat` by default (falls back to
+    `log2FoldChange` for `lfcShrink(type = "apeglm")` results, which
+    lack a `stat` column), non-finite values dropped with a message,
+    duplicated gene identifiers resolved to the largest absolute value
+    with a warning
+  - `as_genes()` extracts a significant-gene vector for `ora()`:
+    `padj < cutoff` with `direction = "both"/"up"/"down"` and an
+    optional post-hoc `minAbsLFC` filter (documented as post-hoc; use
+    `results(lfcThreshold =)` to change the test itself)
+  - `DESeqDataSet` methods forward `...` to `DESeq2::results()`
+    (`contrast`, `name`, `alpha`, ...); `DESeq2` is added to
+    `Suggests` and checked lazily via `rlang::check_installed()`
+  (2026-10-07, Wed)
+
 # enrichit 0.2.6
 
 - fix permutation-based GSEA p-values in the fixed and adaptive engines

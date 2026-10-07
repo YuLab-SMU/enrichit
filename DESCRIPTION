@@ -1,6 +1,6 @@
 Package: enrichit
 Title: 'C++' Implementations of Functional Enrichment Analysis
-Version: 0.2.6
+Version: 0.2.6.9000
 Authors@R: person(given = "Guangchuang", family = "Yu",
                email = "guangchuangyu@gmail.com", role  = c("aut", "cre"))
 Maintainer: Guangchuang Yu <guangchuangyu@gmail.com>
@@ -33,6 +33,7 @@ Suggests:
     AnnotationDbi,
     BiasedUrn,
     clusterProfiler,
+    DESeq2,
     DOSE,
     fgsea,
     gson,
