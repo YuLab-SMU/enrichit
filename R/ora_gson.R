@@ -51,16 +51,32 @@ ora_gson <- function(gene,
     if (missing(universe))
         universe <- NULL
     if(!is.null(universe)) {
-        if (is.character(universe)) {
+        ## A numeric/integer/factor universe (e.g. plain Entrez IDs supplied as
+        ## numbers) is a perfectly meaningful background and should not be
+        ## silently discarded -- coerce it to character the same way `gene`
+        ## is coerced a few lines above. Only genuinely non-vector input
+        ## (list, data.frame, S4 object, ...) is still rejected.
+        ## see https://github.com/YuLab-SMU/clusterProfiler/issues/217
+        ##     https://github.com/YuLab-SMU/clusterProfiler/issues/737
+        if (!is.character(universe)) {
+            if (is.atomic(universe) && !is.null(universe)) {
+                message(
+                    "`universe` is not in character, converting via as.character()..."
+                )
+                universe <- as.character(universe)
+            } else {
+                message("`universe` is not in character and will be ignored...")
+                universe <- NULL
+            }
+        }
+
+        if (!is.null(universe)) {
             force_universe <- getOption("enrichment_force_universe", FALSE)
             if (force_universe) {
                 extID <- universe
             } else {
                 extID <- intersect(extID, universe)
             }
-        } else {
-            ## https://github.com/YuLab-SMU/clusterProfiler/issues/217
-            message("`universe` is not in character and will be ignored...")
         }
     }
 
