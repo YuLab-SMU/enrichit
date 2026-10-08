@@ -126,6 +126,84 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// st_effects_cpp
+Rcpp::NumericMatrix st_effects_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx);
+RcppExport SEXP _enrichit_st_effects_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
+    rcpp_result_gen = Rcpp::wrap(st_effects_cpp(E, weights, design, contrast_idx));
+    return rcpp_result_gen;
+END_RCPP
+}
+// st_squeeze_var_cpp
+Rcpp::List st_squeeze_var_cpp(std::vector<double> var, double df);
+RcppExport SEXP _enrichit_st_squeeze_var_cpp(SEXP varSEXP, SEXP dfSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector<double> >::type var(varSEXP);
+    Rcpp::traits::input_parameter< double >::type df(dfSEXP);
+    rcpp_result_gen = Rcpp::wrap(st_squeeze_var_cpp(var, df));
+    return rcpp_result_gen;
+END_RCPP
+}
+// st_camera_cpp
+Rcpp::List st_camera_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, Rcpp::Nullable<double> inter_gene_cor, bool allow_neg_cor);
+RcppExport SEXP _enrichit_st_camera_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP inter_gene_corSEXP, SEXP allow_neg_corSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type inter_gene_cor(inter_gene_corSEXP);
+    Rcpp::traits::input_parameter< bool >::type allow_neg_cor(allow_neg_corSEXP);
+    rcpp_result_gen = Rcpp::wrap(st_camera_cpp(E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor));
+    return rcpp_result_gen;
+END_RCPP
+}
+// st_roast_cpp
+Rcpp::List st_roast_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, std::string set_statistic, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, int nrot);
+RcppExport SEXP _enrichit_st_roast_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP set_statisticSEXP, SEXP gene_weightsSEXP, SEXP nrotSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< std::string >::type set_statistic(set_statisticSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
+    Rcpp::traits::input_parameter< int >::type nrot(nrotSEXP);
+    rcpp_result_gen = Rcpp::wrap(st_roast_cpp(E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot));
+    return rcpp_result_gen;
+END_RCPP
+}
+// st_fry_cpp
+Rcpp::List st_fry_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, std::string standardize);
+RcppExport SEXP _enrichit_st_fry_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP gene_weightsSEXP, SEXP standardizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
+    Rcpp::traits::input_parameter< std::string >::type standardize(standardizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(st_fry_cpp(E, weights, design, contrast_idx, index, gene_weights, standardize));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_ora_cpp", (DL_FUNC) &_enrichit_ora_cpp, 4},
@@ -135,6 +213,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
     {"_enrichit_gsea_es_all_cpp", (DL_FUNC) &_enrichit_gsea_es_all_cpp, 4},
     {"_enrichit_rwr_eigen_cpp", (DL_FUNC) &_enrichit_rwr_eigen_cpp, 5},
+    {"_enrichit_st_effects_cpp", (DL_FUNC) &_enrichit_st_effects_cpp, 4},
+    {"_enrichit_st_squeeze_var_cpp", (DL_FUNC) &_enrichit_st_squeeze_var_cpp, 2},
+    {"_enrichit_st_camera_cpp", (DL_FUNC) &_enrichit_st_camera_cpp, 7},
+    {"_enrichit_st_roast_cpp", (DL_FUNC) &_enrichit_st_roast_cpp, 8},
+    {"_enrichit_st_fry_cpp", (DL_FUNC) &_enrichit_st_fry_cpp, 7},
     {NULL, NULL, 0}
 };
 

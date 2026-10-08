@@ -28,13 +28,26 @@
   `E` matrix follows the voom convention and the `design` component is
   DESeq2's stored model matrix (columns named as in
   `DESeq2::resultsNames()`)
-- add `set_test()`: run limma's competitive gene-set tests
-  (`camera` / `roast` / `fry`) directly on a fitted `DESeqDataSet` or
-  any `EList`, with DESeq2-style three-token `contrast` support
-  (`c(factor, numerator, denominator)` mapped to the design column) and
-  `...` forwarded to the limma backend; `limma` and
-  `SummarizedExperiment` are added to `Suggests`
+- add `dsea()`: run competitive gene-set tests (`camera` / `roast` /
+  `fry`) directly on a fitted `DESeqDataSet` or any `EList`, with
+  DESeq2-style three-token `contrast` support
+  (`c(factor, numerator, denominator)` mapped to the design column);
+  `limma` and `SummarizedExperiment` are added to `Suggests`
   (2026-10-07, Wed)
+- `dsea()` gains a native C++ engine (default,
+  `engine = "native"`): `camera`, `roast` (mroast-style output with
+  `midp` mid-p adjustment and BH FDR) and `fry` are computed by a
+  self-contained implementation mirroring limma's algorithms
+  (LINPACK-convention Householder QR for the contrast column, eBayes
+  variance moderation, rotation scheme reproducing limma's R RNG stream
+  so the same `set.seed()` gives bit-identical p-values, Jacobi SVD and
+  Gauss-Legendre integration for `fry`); weighted (`EList`), unweighted
+  and `gene.weights` paths all agree with limma to within numerical
+  precision (the `msq` rotation mirrors limma's per-chunk
+  `sqrt(abs(gene.weights))` rescaling, keeping p-values bit-identical
+  for any `nrot`), and numerically rank-deficient designs error like
+  limma; `engine = "limma"` keeps delegating to limma with its full
+  argument set (2026-10-08, Thu)
 
 # enrichit 0.2.6
 

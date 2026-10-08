@@ -278,7 +278,7 @@ as_genes.DESeqDataSet <- function(x,
 #' \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}, ready for limma's
 #' weighted linear-model machinery and gene-set tests such as
 #' \code{\link[limma:camera]{camera}}, \code{\link[limma:roast]{roast}} and
-#' \code{\link[limma:fry]{fry}} (see \code{\link{set_test}}).
+#' \code{\link[limma:fry]{fry}} (see \code{\link{dsea}}).
 #'
 #' @details The expression matrix follows the voom convention,
 #'   \code{E[i,j] = log2((count[i,j] + 0.5) / (lib.size[j] * norm.factor[j] + 1) * 1e6)}

@@ -29,7 +29,9 @@ before computing weights (default 1).}
 An object of class \code{\link[limma:EList-class]{EList}} with
 components \code{E} (genes x samples log-expression matrix),
 \code{weights} (genes x samples precision weights) and \code{design}
-(the model matrix of \code{DESeq2::design(x)}).
+(the model matrix used by \code{DESeq2::DESeq()}, with columns named
+as in \code{DESeq2::resultsNames()}, e.g.
+\code{condition_trt_vs_ctrl}).
 }
 \description{
 Build a limma \code{EList} (log-expression matrix plus per-observation
@@ -37,7 +39,7 @@ precision weights and the design matrix) from a fitted
 \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}, ready for limma's
 weighted linear-model machinery and gene-set tests such as
 \code{\link[limma:camera]{camera}}, \code{\link[limma:roast]{roast}} and
-\code{\link[limma:fry]{fry}} (see \code{\link{set_test}}).
+\code{\link[limma:fry]{fry}} (see \code{\link{dsea}}).
 }
 \details{
 The expression matrix follows the voom convention,
@@ -58,10 +60,10 @@ so the \code{log(2)^2} factor only fixes the absolute scale.
 As \code{mu[i,j]} approaches zero the delta-method variance vanishes
 while the discreteness scatter of near-zero counts does not, so fitted
 means are floored at \code{mu.floor} (default 1 count) before the
-weights are computed. Genes without an estimated dispersion
-(all-zero counts) get \code{alpha = 1}, the most conservative value.
-Any remaining non-finite weights (failed fits) are replaced by the
-minimum finite weight, with a message.
+weights are computed. Genes without an estimated dispersion get
+\code{alpha = 1}; all-zero genes additionally have NA fitted means,
+and any non-finite weights are replaced by the minimum finite
+weight, with a message.
 
 DESeq2 must have been run on the object: both the \code{"mu"} assay
 and the dispersions are required.

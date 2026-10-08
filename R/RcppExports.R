@@ -38,3 +38,47 @@ rwr_eigen_cpp <- function(A, v, restart, threshold, max_iter) {
     .Call(`_enrichit_rwr_eigen_cpp`, A, v, restart, threshold, max_iter)
 }
 
+#' Effects matrix from .lmEffects (contrast coordinate + residual coordinates)
+#'
+#' @keywords internal
+st_effects_cpp <- function(E, weights, design, contrast_idx) {
+    .Call(`_enrichit_st_effects_cpp`, E, weights, design, contrast_idx)
+}
+
+#' limma-style squeezeVar for scalar residual df (fitFDist prior)
+#'
+#' @keywords internal
+st_squeeze_var_cpp <- function(var, df) {
+    .Call(`_enrichit_st_squeeze_var_cpp`, var, df)
+}
+
+#' Native camera: inter-gene-correlation adjusted mean-rank set test
+#'
+#' Mirrors \code{limma::camera} for \code{use.ranks = FALSE}.
+#'
+#' @keywords internal
+st_camera_cpp <- function(E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor) {
+    .Call(`_enrichit_st_camera_cpp`, E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor)
+}
+
+#' Native roast: rotation gene set test on the effects matrix
+#'
+#' Mirrors \code{limma::mroast}/\code{.roastEffects} with scalar
+#' var.prior/df.prior and \code{approx.zscore = TRUE}. Consumes R's
+#' RNG in the same order as limma, so \code{set.seed()} reproduces
+#' limma's rotation draws exactly.
+#'
+#' @keywords internal
+st_roast_cpp <- function(E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot) {
+    .Call(`_enrichit_st_roast_cpp`, E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot)
+}
+
+#' Native fry: fast rotation-free set test on the effects matrix
+#'
+#' Mirrors \code{limma::fry} (standardize = "posterior.sd" by default).
+#'
+#' @keywords internal
+st_fry_cpp <- function(E, weights, design, contrast_idx, index, gene_weights, standardize) {
+    .Call(`_enrichit_st_fry_cpp`, E, weights, design, contrast_idx, index, gene_weights, standardize)
+}
+
