@@ -37,7 +37,9 @@ Suggests:
     DOSE,
     fgsea,
     gson,
+    limma,
     qvalue,
+    SummarizedExperiment,
     testthat 
 Encoding: UTF-8
 URL: https://yulab-smu.top/biomedical-knowledge-mining-book/

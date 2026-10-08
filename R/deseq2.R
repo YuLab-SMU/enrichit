@@ -268,3 +268,162 @@ as_genes.DESeqDataSet <- function(x,
     }
     out
 }
+
+## ---- EList bridge ---------------------------------------------------------
+
+#' Convert a DESeqDataSet to a limma EList with delta-method precision weights
+#'
+#' Build a limma \code{EList} (log-expression matrix plus per-observation
+#' precision weights and the design matrix) from a fitted
+#' \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}, ready for limma's
+#' weighted linear-model machinery and gene-set tests such as
+#' \code{\link[limma:camera]{camera}}, \code{\link[limma:roast]{roast}} and
+#' \code{\link[limma:fry]{fry}} (see \code{\link{set_test}}).
+#'
+#' @details The expression matrix follows the voom convention,
+#'   \code{E[i,j] = log2((count[i,j] + 0.5) / (lib.size[j] * norm.factor[j] + 1) * 1e6)}
+#'   with \code{lib.size = colSums(counts)}.
+#'
+#'   The precision weights, however, are not re-learned from an empirical
+#'   mean-variance trend: they reuse the negative-binomial mean-variance law
+#'   that DESeq2 has already estimated genome-wide (fitted means in
+#'   \code{assay(x, "mu")}, empirical-Bayes-shrunk dispersions in
+#'   \code{mcols(x)$dispersion}). The delta method on
+#'   \code{log2(c + 0.5)} gives
+#'   \code{Var(y[i,j]) ~ (mu[i,j] + alpha[i] * mu[i,j]^2) / ((mu[i,j] + 0.5)^2 * log(2)^2)},
+#'   and the weight is the reciprocal of this variance. Global scaling of
+#'   the weights is absorbed by the residual-variance estimate downstream,
+#'   so the \code{log(2)^2} factor only fixes the absolute scale.
+#'
+#'   As \code{mu[i,j]} approaches zero the delta-method variance vanishes
+#'   while the discreteness scatter of near-zero counts does not, so fitted
+#'   means are floored at \code{mu.floor} (default 1 count) before the
+#'   weights are computed. Genes without an estimated dispersion get
+#'   \code{alpha = 1}; all-zero genes additionally have NA fitted means,
+#'   and any non-finite weights are replaced by the minimum finite
+#'   weight, with a message.
+#'
+#'   DESeq2 must have been run on the object: both the \code{"mu"} assay
+#'   and the dispersions are required.
+#'
+#' @param x a fitted \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}.
+#' @param norm.factors numeric vector of length \code{ncol(x)} of
+#'   normalization factors multiplied into the library sizes; defaults to
+#'   \code{DESeq2::sizeFactors(x)}. \code{NULL} means no normalization
+#'   (raw library sizes only).
+#' @param mu.floor positive numeric, fitted means are floored at this value
+#'   before computing weights (default 1).
+#' @param ... currently unused.
+#' @return An object of class \code{\link[limma:EList-class]{EList}} with
+#'   components \code{E} (genes x samples log-expression matrix),
+#'   \code{weights} (genes x samples precision weights) and \code{design}
+#'   (the model matrix used by \code{DESeq2::DESeq()}, with columns named
+#'   as in \code{DESeq2::resultsNames()}, e.g.
+#'   \code{condition_trt_vs_ctrl}).
+#' @examples
+#' \donttest{
+#' library(DESeq2)
+#' dds <- makeExampleDESeqDataSet(n = 500)
+#' isB <- colData(dds)$condition == "B"
+#' ct <- counts(dds)
+#' ct[1:60, isB] <- ct[1:60, isB] * 5 + 500
+#' storage.mode(ct) <- "integer"
+#' counts(dds) <- ct
+#' dds <- DESeq(dds, quiet = TRUE)
+#' elist <- as_elist(dds)
+#' }
+#' @export
+as_elist <- function(x, ...) {
+    UseMethod("as_elist")
+}
+
+#' @rdname as_elist
+#' @export
+as_elist.default <- function(x, ...) {
+    stop(
+        "no as_elist() method for objects of class '",
+        paste(class(x), collapse = ", "),
+        "'; currently DESeqDataSet is supported.",
+        call. = FALSE
+    )
+}
+
+#' @rdname as_elist
+#' @export
+as_elist.DESeqDataSet <- function(x,
+                                  norm.factors = DESeq2::sizeFactors(x),
+                                  mu.floor = 1,
+                                  ...) {
+    rlang::check_installed("DESeq2", "for converting DESeq2 objects.")
+    rlang::check_installed("limma", "for constructing an EList.")
+
+    if (is.null(mu.floor) || !is.numeric(mu.floor) || length(mu.floor) != 1 ||
+        !is.finite(mu.floor) || mu.floor <= 0) {
+        stop("mu.floor must be a single positive finite number.", call. = FALSE)
+    }
+
+    if (!"mu" %in% SummarizedExperiment::assayNames(x)) {
+        stop(
+            "no 'mu' assay found; run DESeq2::DESeq() on the object first -- ",
+            "as_elist() reuses its fitted means and dispersions.",
+            call. = FALSE
+        )
+    }
+
+    ct <- DESeq2::counts(x)
+    ids <- rownames(ct)
+    if (is.null(ids)) {
+        stop("the DESeqDataSet has no row names; gene identifiers are required.", call. = FALSE)
+    }
+    n <- ncol(ct)
+    if (is.null(norm.factors)) {
+        norm.factors <- rep(1, n)
+    }
+    if (!is.numeric(norm.factors) || length(norm.factors) != n ||
+        anyNA(norm.factors) || any(norm.factors <= 0)) {
+        stop("norm.factors must be NULL or a positive numeric vector of length ncol(x).", call. = FALSE)
+    }
+    lib.size <- colSums(ct) * norm.factors
+    if (any(lib.size <= 0)) {
+        stop("all library sizes must be positive.", call. = FALSE)
+    }
+
+    E <- log2((ct + 0.5) / (matrix(lib.size, nrow(ct), n, byrow = TRUE) + 1) * 1e6)
+
+    ## DESeq2 stores the model matrix it fitted with, with columns renamed
+    ## to the resultsNames() convention (e.g. condition_trt_vs_ctrl);
+    ## a fresh model.matrix() would give unrenamed names (conditiontrt)
+    design <- attr(x, "modelMatrix")
+    if (is.null(design)) {
+        design <- stats::model.matrix(
+            DESeq2::design(x),
+            data = as.data.frame(SummarizedExperiment::colData(x))
+        )
+    }
+
+    alpha <- SummarizedExperiment::mcols(x)$dispersion
+    if (is.null(alpha)) {
+        stop("no dispersions found; run DESeq2::DESeq() on the object first.", call. = FALSE)
+    }
+    mu <- SummarizedExperiment::assay(x, "mu")
+
+    w <- .deseq2_precision_weights(mu, alpha, mu.floor = mu.floor)
+    dimnames(w) <- dimnames(E)
+
+    methods::new("EList", list(E = E, weights = w, design = design))
+}
+
+.deseq2_precision_weights <- function(mu, alpha, mu.floor) {
+    alpha[is.na(alpha)] <- 1
+    mu_f <- pmax(mu, mu.floor)
+    w <- (mu_f + 0.5)^2 * log(2)^2 / (mu_f + alpha * mu_f^2)
+    bad <- !is.finite(w)
+    if (any(bad)) {
+        message(
+            "replacing ", sum(bad),
+            " non-finite precision weight(s) with the minimum finite weight."
+        )
+        w[bad] <- min(w[!bad])
+    }
+    w
+}

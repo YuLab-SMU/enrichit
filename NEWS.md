@@ -15,6 +15,25 @@
   - `DESeqDataSet` methods forward `...` to `DESeq2::results()`
     (`contrast`, `name`, `alpha`, ...); `DESeq2` is added to
     `Suggests` and checked lazily via `rlang::check_installed()`
+- add `as_elist()`: convert a fitted `DESeqDataSet` into a limma `EList`
+  whose per-observation precision weights are derived from DESeq2's own
+  genome-wide estimates via the delta method,
+  `w_ij = (mu + 0.5)^2 log(2)^2 / (mu + alpha * mu^2)` on the fitted
+  means (`assay(x, "mu")`) and EB-shrunk dispersions
+  (`mcols(x)$dispersion`), reusing the NB mean-variance law instead of
+  re-learning a voom-style trend; fitted means are floored (`mu.floor`,
+  default 1) to avoid the delta-method singularity at zero, NA
+  dispersions get `alpha = 1`, and non-finite weights (all-zero genes
+  have NA fitted means) are replaced by the minimum finite weight; the
+  `E` matrix follows the voom convention and the `design` component is
+  DESeq2's stored model matrix (columns named as in
+  `DESeq2::resultsNames()`)
+- add `set_test()`: run limma's competitive gene-set tests
+  (`camera` / `roast` / `fry`) directly on a fitted `DESeqDataSet` or
+  any `EList`, with DESeq2-style three-token `contrast` support
+  (`c(factor, numerator, denominator)` mapped to the design column) and
+  `...` forwarded to the limma backend; `limma` and
+  `SummarizedExperiment` are added to `Suggests`
   (2026-10-07, Wed)
 
 # enrichit 0.2.6
