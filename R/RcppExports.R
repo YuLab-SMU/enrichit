@@ -25,6 +25,147 @@ gsea_es_all_cpp <- function(stats, gene_sets, exponent, scoreType) {
     .Call(`_enrichit_gsea_es_all_cpp`, stats, gene_sets, exponent, scoreType)
 }
 
+#' Gene-set test with an H0 negative-binomial parametric-bootstrap null
+#'
+#' \code{statistic} selects the ablation cell (spec section 0.2):
+#' \describe{
+#'   \item{\code{"nb_z"}}{the project's own statistic -- the NB-model-variance
+#'     weighted set z \code{sum(beta*w)/sqrt(sum(w))} with \code{w = 1/se^2} from
+#'     the closed-form NB information -- against the NB bootstrap null.  The
+#'     identical closed form is applied to the observed counts and to every
+#'     replicate, so observed and null share one estimator by construction.}
+#'   \item{\code{"nb_z_analytic"}}{the same z under the analytic normal null,
+#'     \code{p_two = 2*pnorm(-|z|)}; no bootstrap, \code{B} may be 0.  Isolates
+#'     the statistic's contribution (cell A), and its null sd is the measurement
+#'     that says whether the bootstrap adds anything at all.}
+#'   \item{\code{"fry_t"}}{limma's fry-form set statistic against the same NB
+#'     bootstrap (cell B), through \code{st_effects_cpp}.  The closed form is used
+#'     only to build the null mean; the statistic itself is the effects layer and
+#'     \code{gene_weights} apply.}
+#' }
+#'
+#' The bootstrap mean is the CONTRAST-ZEROED fitted mean
+#' \code{mu_h0[g,j] = mu[g,j] * exp(-X[j, contrast_idx] * beta_ref_g)}, not
+#' \code{assay(x, "mu")}: the latter carries the real effect and would give every
+#' set p ~ 0.5.  Size factors, batch terms, the mean structure and the EB-shrunk
+#' dispersion all survive mu_h0; only the tested effect is removed.
+#'
+#' @param counts G x n integer matrix of raw counts.  Must be finite and
+#'   non-negative; \code{NA} raises an error.
+#' @param mu G x n numeric matrix of fitted means (\code{assay(x, "mu")}).  It is
+#'   both the reference point of the geometry and the base of the null mean, so it
+#'   must come from the same fit as \code{norm_factors} / \code{design}.  It is NOT
+#'   itself the resampling mean (that is mu_h0, built internally).
+#' @param alpha G numeric vector of EB-shrunk dispersions
+#'   (\code{mcols(x)$dispersion}).  \code{NA} is treated as 1; \code{<= 0} becomes
+#'   the Poisson limit.
+#' @param norm_factors n numeric size factors (depth-like).
+#' @param design n x p design matrix (p <= 12), same parameterisation as \code{mu}.
+#' @param contrast_idx 1-based index of the contrast column of \code{design}.
+#' @param index list of integer gene-set memberships (1-based row numbers).
+#' @param B number of bootstrap replicates; >= 1 for the bootstrap cells, may be 0
+#'   for \code{"nb_z_analytic"}.
+#' @param gene_weights optional numeric vector of length G (signed).  Used by
+#'   \code{"fry_t"} only; supplying it with a \code{nb_z} cell is an error.
+#' @param mu_floor lower bound for the fitted means in the delta weights.
+#' @param statistic one of \code{"nb_z"}, \code{"nb_z_analytic"}, \code{"fry_t"}.
+#' @param beta G numeric DESeq2 contrast coefficients.  Validated for length but
+#'   NOT consumed: the engine computes its own closed form so the observed
+#'   statistic and the null cannot drift apart.  \code{NA_real_} placeholders are
+#'   fine.
+#' @param se G numeric DESeq2 standard errors.  Same status as \code{beta}, and
+#'   deliberately so -- see the file header on the low-count SE being the quantity
+#'   under test rather than an input.
+#' @return a list with \code{t_obs} (\code{z_S} or \code{t_S} per the selector),
+#'   \code{p_two}, \code{n_extreme} (\code{NA} for the analytic cell),
+#'   \code{alpha_hat} (set-wise mean dispersion consumed), \code{n_gene_na} (genes
+#'   excluded from the statistic), \code{statistic} (echoed) and \code{B}.
+#'   Bootstrap cells use \code{p_two = (1 + n_extreme) / (B + 1)}.
+#' @noRd
+st_nb_boot_cpp <- function(counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se) {
+    .Call(`_enrichit_st_nb_boot_cpp`, counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se)
+}
+
+#' The closed-form geometry and the H0 (contrast-zeroed) null mean
+#'
+#' Returns exactly what the engine computes internally on the OBSERVED data, so the
+#' R side can
+#'   (a) assert \code{log(mu) - log(mu_h0) == X[, ci] * beta} (the consistency
+#'       guard: the returned beta must be the beta that built the null),
+#'   (b) confirm the null is centred, i.e. the reference coefficient really is the
+#'       contrast that mu carries,
+#'   (c) compare \code{beta}/{\code{se} with \code{DESeq2::results()} and see the
+#'       difference rather than assume it away.
+#'
+#' @param counts G x n integer matrix of observed counts.
+#' @param mu G x n fitted means.
+#' @param alpha G dispersions (NA -> 1).
+#' @param norm_factors n size factors (depth-like), the fixed log offset.
+#' @param design n x p design matrix, same parameterisation as \code{mu}.
+#' @param contrast_idx 1-based contrast column.
+#' @return a list with \code{mu_h0}, \code{mu_full} (the input \code{mu} echoed, so
+#'   the ratio test is exact), \code{beta} (beta_ref), \code{se},
+#'   \code{precision}, \code{beta_obs} (the statistic's own coefficient on the
+#'   observed counts) and \code{n_gene_na}.
+#' @noRd
+st_nb_null_mu_cpp <- function(counts, mu, alpha, norm_factors, design, contrast_idx) {
+    .Call(`_enrichit_st_nb_null_mu_cpp`, counts, mu, alpha, norm_factors, design, contrast_idx)
+}
+
+#' Resample bootstrap replicates of the counts from a given null mean
+#'
+#' Runs the engine's own resampling loop \code{b} times from the caller's RNG
+#' stream so the draw order and the number of draws per replicate can be checked
+#' against vectorised R \code{rnbinom()} calls under an identical seed.
+#'
+#' @param null_mu G x n mean matrix to draw from (pass \code{mu_h0}).
+#' @param alpha G dispersions (NA -> 1, <= 0 -> Poisson).
+#' @param b replicate number to return (>= 1).
+#' @return a G x n integer matrix of resampled counts.
+#' @noRd
+st_nb_resample_cpp <- function(null_mu, alpha, b) {
+    .Call(`_enrichit_st_nb_resample_cpp`, null_mu, alpha, b)
+}
+
+#' Engine pipeline for arbitrary counts -- the pipeline-identity probe
+#'
+#' Runs the SAME internal construction the bootstrap loop uses (lib.size -> E ->
+#' delta weights -> st_effects_cpp) on whatever counts it is handed, and returns
+#' every intermediate.  Feeding it the OBSERVED counts and comparing against
+#' \code{as_dsea()}'s own \code{E}/\code{weights} proves the observed pass is
+#' bit-identical; feeding it a RESAMPLED replicate and comparing against the R
+#' formulas proves the null traverses the identical path.
+#'
+#' @param counts G x n integer matrix (observed or a replicate).
+#' @param mu G x n fitted means (for the weights only).
+#' @param alpha G dispersions (for the weights only).
+#' @param norm_factors n size factors.
+#' @param design n x p design matrix.
+#' @param contrast_idx 1-based contrast column.
+#' @param mu_floor lower bound for the weights.
+#' @return a list with \code{lib_size}, \code{E}, \code{weights}, \code{Effects}.
+#' @noRd
+st_nb_pipeline_cpp <- function(counts, mu, alpha, norm_factors, design, contrast_idx, mu_floor) {
+    .Call(`_enrichit_st_nb_pipeline_cpp`, counts, mu, alpha, norm_factors, design, contrast_idx, mu_floor)
+}
+
+#' The H0 null distribution of the set statistic
+#'
+#' Runs the same pipeline and returns the B replicate values instead of only the
+#' exceedance counts, so the R side can measure the shape of the null.  The sd of
+#' z_S under this null IS the hypothesis: ~1 means the analytic normal null
+#' already suffices and the bootstrap adds nothing (criterion F1), while sd > 1 is
+#' the excess the design exists to calibrate.
+#'
+#' @inheritParams st_nb_boot_cpp
+#' @param statistic \code{"nb_z"} or \code{"fry_t"}.
+#' @return a list with \code{t_obs}, \code{null} (nsets x B matrix of replicate
+#'   statistics), \code{p_two}, \code{statistic} and \code{B}.
+#' @noRd
+st_nb_null_draws_cpp <- function(counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se) {
+    .Call(`_enrichit_st_nb_null_draws_cpp`, counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se)
+}
+
 #' Random Walk with Restart using Eigen Sparse Matrix
 #'
 #' @param A column-normalized sparse matrix
