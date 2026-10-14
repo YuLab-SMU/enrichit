@@ -2,127 +2,212 @@
 % Please edit documentation in R/dsea.R
 \name{dsea}
 \alias{dsea}
-\title{Competitive gene-set tests on a DESeqDataSet or EList}
+\title{Set-level differential expression testing for RNA-seq data}
 \usage{
 dsea(
   x,
   gene_sets,
   contrast = NULL,
   method = c("camera", "roast", "fry"),
-  engine = c("native", "limma"),
+  engine = "native",
+  sort = TRUE,
+  verbose = FALSE,
   ...
 )
 }
 \arguments{
-\item{x}{a fitted \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}
-(must have been processed by \code{DESeq2::DESeq()}) or an
-\code{\link[limma:EList-class]{EList}} with a \code{design} component.}
+\item{x}{The data to test. One of
+\describe{
+\item{a fitted \code{\link[DESeq2]{DESeqDataSet}}}{(after
+\code{DESeq2::DESeq()}); converted on the fly with
+\code{\link{as_dsea}}.}
+\item{a \code{"DseaData"} object}{as returned by
+\code{\link{as_dsea}}.}
+\item{a bare list}{with elements \code{E} (genes x samples log2
+expression matrix), \code{weights} (optional) and \code{design}.
+Kept for backward compatibility with pre-0.2.7 scripts.}
+}}
 
-\item{gene_sets}{named list of character vectors of gene identifiers
-matching the row names of the data; a single unnamed character vector
-is treated as one set.}
+\item{gene_sets}{A named list of character vectors of gene identifiers, or
+a single character vector (treated as one set). Identifiers are matched
+against \code{rownames(E)}; members that are absent are dropped.}
 
-\item{contrast}{the contrast to test. Either a design-column name
-(character length 1), a numeric contrast vector of length
-\code{ncol(design)} (\code{engine = "limma"} only), a DESeq2-style
-three-token contrast \code{c(factor, numerator, denominator)} which
-is mapped to the corresponding design column, or \code{NULL}
-(default) to test the last column of the design, matching limma's
-and DESeq2's defaults.}
+\item{contrast}{Which design-matrix column encodes the comparison. Accepts
+the DESeq2-style contrast name (e.g. \code{"dex_trt_vs_untrt"}), a column
+index, or a numeric vector with exactly one non-zero entry. \code{NULL}
+is allowed only when the design has a single non-intercept column.
+Note that the design column names have the sign implicit in the column
+itself: the requested direction is read from the column, not from the
+order of the name.}
 
-\item{method}{character, the test to run: \code{"camera"} (default),
-\code{"roast"} or \code{"fry"}.}
+\item{method}{Which set test to run: \code{"camera"}, \code{"roast"} or
+\code{"fry"}. See Details.}
 
-\item{engine}{character, \code{"native"} (default) for the built-in
-C++ engine, or \code{"limma"} to delegate to the limma package.}
+\item{engine}{The statistical engine. Only \code{"native"} is supported.
+The argument exists so that scripts written against the older two-engine
+API fail with an actionable message instead of an "unused argument"
+error; any other value raises an error.}
 
-\item{...}{additional arguments forwarded to the underlying engine;
-see Details for what each method supports.}
+\item{sort}{Logical: sort the result by \code{PValue} (default \code{TRUE}).}
+
+\item{verbose}{Logical: emit progress messages. Default \code{FALSE}.}
+
+\item{...}{Method-specific arguments. These are passed through \code{...}
+rather than named in the signature, so they do not appear in the usage
+section above; they are validated against the selected \code{method} and
+an unknown name is an error. For \code{method = "camera"}:
+\code{inter.gene.cor} (default \code{0.01}; \code{NA} estimates it) and
+\code{allow.neg.cor} (default \code{FALSE}). For
+\code{method = "roast"}: \code{nrot} (default \code{999}),
+\code{set.statistic} (default \code{"mean"}), \code{midp} (default
+\code{FALSE}) and \code{gene.weights} (default \code{NULL}). For
+\code{method = "fry"}: \code{standardize} (default
+\code{"posterior.sd"}) and \code{gene.weights} (default \code{NULL}).
+\code{inter.gene.cor}: (\code{camera}) Inter-gene correlation used to set
+the variance inflation factor. Default \code{0.01}. Pass \code{NA} to
+estimate it from the data.
+\code{allow.neg.cor}: (\code{camera}) Allow a negative inter-gene
+correlation estimate. Default \code{FALSE}; a negative estimate is then
+treated as zero.
+\code{nrot}: (\code{roast}) Number of rotations. Default \code{999}.
+\code{set.statistic}: (\code{roast}) Set-level statistic: one of
+\code{"mean"}, \code{"floormean"}, \code{"mean50"} or \code{"msq"}.
+Default \code{"mean"}.
+\code{midp}: (\code{roast}) Accepted for drop-in compatibility, but it
+\strong{cannot change any value this function returns}. In
+\code{limma::mroast} the mid-p correction is applied to the multiple-testing
+columns only (\code{tab$FDR} and \code{tab$FDR.Mixed} are computed from
+\code{PValue - 1/2/(nrot + 1)} and then floored back at the unadjusted
+\code{PValue}); the raw \code{PValue} column is untouched. \code{dsea()}
+returns unadjusted p-values and no FDR column at all -- the caller chooses the
+testing family (see the \emph{Value} section) -- so there is nothing for
+\code{midp} to act
+on. Verified: with an identical seed, \code{midp = TRUE} and
+\code{midp = FALSE} return \code{identical()} p-values, which matches limma's
+own \code{PValue} under both settings. If you need limma's mid-p FDR, apply
+\code{p.adjust(PValue - 1/2/(nrot + 1), "BH")} yourself and floor it at
+\code{PValue}.
+Default \code{FALSE} (limma's own default is \code{TRUE}).
+\code{standardize}: (\code{fry}) Standardisation of the residual variances:
+one of \code{"posterior.sd"}, \code{"none"}, \code{"residual.sd"} or
+\code{"p2"}. Default \code{"posterior.sd"}, which is the only choice that
+borrows strength across genes.
+\code{gene.weights}: (\code{roast}, \code{fry}) Optional named numeric
+vector of per-gene weights, covering every gene in \code{x}. Default
+\code{NULL} (unweighted). A constant vector is ignored.}
 }
 \value{
-\code{engine = "limma"} returns the result object of the
-selected limma test, unchanged. \code{engine = "native"} returns a
-data frame with one row per gene set, sorted as limma does:
-\code{camera} gives \code{NGenes}, \code{Direction}, \code{PValue}
-(plus \code{Correlation} when the inter-gene correlation is
-estimated, and \code{FDR} for multiple sets); \code{roast} gives the
-\emph{mroast} columns \code{NGenes}, \code{PropDown}, \code{PropUp},
-\code{Direction}, \code{PValue}, \code{FDR}, \code{PValue.Mixed},
-\code{FDR.Mixed}; \code{fry} gives \code{NGenes}, \code{Direction},
-\code{PValue}, \code{PValue.Mixed} (plus \code{FDR} and
-\code{FDR.Mixed} for multiple sets).
+A \code{data.frame} with one row per tested gene set and columns
+\describe{
+\item{\code{set}}{Gene set name.}
+\item{\code{NGenes}}{Number of set members found in \code{x}.}
+\item{\code{Direction}}{\code{"Up"} if the set's genes are on average
+higher in the numerator group of the contrast, \code{"Down"} if
+lower, and \code{NA} when the method cannot report a direction
+(\code{fry} on a single-gene set). The two-sided p-value in
+\code{PValue} does not depend on the direction label.}
+\item{\code{PValue}}{Two-sided p-value for the set. See the note below.}
+\item{\code{Statistic}}{The set-level statistic carrying the direction:
+the mean moderated t for \code{camera} (recovered from the two tail
+probabilities), the moderated set t for \code{fry}, and the
+difference in active proportions for \code{roast}.}
+\item{\code{Method}}{The method that produced the row.}
+}
 }
 \description{
-Run competitive gene-set tests -- \code{camera}, \code{roast} or
-\code{fry} -- directly on a fitted
-\code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}, or on any
-\code{\link[limma:EList-class]{EList}} such as the one produced by
-\code{\link{as_elist}}.
+Test whether gene sets are shifted between the two groups of a
+\code{DESeq2} contrast, using one of three self-contained competitive
+set tests: \code{camera}, \code{roast} or \code{fry}. All three are
+implemented in C++ in this package; no third-party statistics package is
+called.
 }
-\details{
-Competitive tests ask whether the genes of a set shift
-consistently, relative to all other genes, under a contrast of the
-experimental design. This is the design-aware, no-cut-off alternative
-to \code{\link{ora}} (which requires a significance cut-off) and to
-\code{\link{gsea}} (which reduces the design to a single ranked list):
-any contrast expressible in the DESeq2 design formula can be tested.
+\section{What \code{dsea()} returns, and what it does not}{
 
-By default (\code{engine = "native"}) the tests run in a
-self-contained C++ engine that mirrors limma's algorithms, including
-the eBayes-style variance moderation and (for \code{roast}) the
-rotation scheme, which consumes R's random-number stream in the same
-order as limma -- so the same \code{set.seed()} reproduces limma's
-p-values exactly. \code{engine = "limma"} dispatches to
-\code{\link[limma:camera]{limma::camera}},
-\code{\link[limma:roast]{limma::roast}} /
-\code{\link[limma:roast]{limma::mroast}} or
-\code{\link[limma:fry]{limma::fry}} and supports their full argument
-sets through \code{...}; it requires the limma package.
 
-For a \code{DESeqDataSet}, the object is converted with
-\code{\link{as_elist}}, whose per-observation precision weights are
-derived from DESeq2's own fitted means and dispersions rather than
-from a re-learned mean-variance trend.
+\code{dsea()} returns \strong{p-values}, not per-sample or per-gene
+measurement values. The set-level tests summarise each gene set into a
+single statistic and a single p-value; no expression values, fold changes
+or per-gene statistics are returned, and none should be reconstructed
+from the output. This boundary is deliberate: the output is a
+\code{data.frame} that plugs into the same downstream reporting as
+\code{\link{gsea}} and \code{\link{ora}}, and downstream code must not
+assume it carries measurements. Use \code{\link{as_dsea}} directly if you
+want the \code{E} matrix itself.
 
-Arguments supported by the native engine, with limma-identical
-defaults:
-\itemize{
-\item \code{camera}: \code{inter.gene.cor = 0.01} (pass \code{NA}
-to estimate it from the residuals), \code{allow.neg.cor = FALSE},
-\code{sort = TRUE}, \code{directional = TRUE}.
-\item \code{roast}: \code{set.statistic = "mean"},
-\code{nrot = 1999}, \code{gene.weights}, \code{midp = TRUE},
-\code{sort = "directional"}. The result is \emph{mroast}-style
-(limma's \code{roast} also delegates to \code{mroast} when given
-multiple sets); the \code{PValue} column always holds the
-unadjusted rotation p-value and \code{FDR}/\code{FDR.Mixed} use
-Benjamini-Hochberg (limma hardcodes the same method).
-\item \code{fry}: \code{gene.weights},
-\code{standardize = "posterior.sd"}, \code{sort = "directional"}.
+P-values are \emph{not} adjusted for multiple testing. Apply
+\code{\link[stats]{p.adjust}} on \code{PValue} as appropriate; this is
+left to the caller because the right family depends on whether the sets
+form one collection or several.
 }
-Any other limma argument (e.g. \code{use.ranks}, \code{trend.var},
-\code{robust}, \code{array.weights}, \code{block}) is rejected by the
-native engine with a pointer to \code{engine = "limma"}.
 
-Gene sets with fewer than 2 genes present in the data are dropped,
-with a warning.
+\section{Resampling methods and reproducibility}{
+
+
+\code{roast} (and \code{fry} passes no rotations) use R's random number
+generator. The C++ engine draws rotations without reseeding, so results
+are reproducible exactly when the caller controls the seed, e.g.
+\code{set.seed(42)} before \code{dsea(...)}. The engine deliberately does
+\emph{not} call \code{set.seed()} itself, because that would silently
+ignore the caller's stream.
 }
+
+\section{Which method to use}{
+
+
+\describe{
+\item{camera}{Competitive: tests whether the set's genes are more
+differentially expressed than the rest of the genome. Fast and robust,
+but centres out any genome-wide shift, so it cannot see a global
+effect.}
+\item{fry}{Self-contained: tests whether the set differs between the two
+groups using only the set's own genes. Does not centre across the
+genome, so a global shift shows up in every set.}
+\item{roast}{Self-contained like \code{fry}, and reports a direction and
+a set-level statistic via rotation; useful for small sets where
+\code{fry}'s residual degrees of freedom are limiting.}
+}
+}
+
 \examples{
 \donttest{
 library(DESeq2)
-dds <- makeExampleDESeqDataSet(n = 500)
-isB <- colData(dds)$condition == "B"
-ct <- counts(dds)
-ct[1:60, isB] <- ct[1:60, isB] * 5 + 500
-storage.mode(ct) <- "integer"
-counts(dds) <- ct
-dds <- DESeq(dds, quiet = TRUE)
+library(airway)
+
+data(airway)
+dds <- DESeqDataSet(airway, design = ~ cell + dex)
+dds <- DESeq(dds)
+
+## Always ask DESeq2 which contrasts exist rather than assuming a name.
+resultsNames(dds)
+ct <- "dex_trt_vs_untrt"
+
 gene_sets <- list(
-    SET1 = paste0("gene", 1:50),
-    SET2 = paste0("gene", 201:260)
+    TNFa_Signaling = c("TNFAIP3", "NFKB1", "NFKB2", "REL", "RELA"),
+    OXPHOS         = c("NDUFA1", "NDUFB1", "COX5A", "ATP5F1A", "SDHA")
 )
-res <- dsea(dds, gene_sets, contrast = c("condition", "B", "A"))
-## the limma backend with its full argument set:
-res2 <- dsea(dds, gene_sets, engine = "limma", trend.var = TRUE)
+
+## The three methods. Each returns a data.frame of p-values.
+cam <- dsea(dds, gene_sets, contrast = ct, method = "camera")
+fry <- dsea(dds, gene_sets, contrast = ct, method = "fry")
+rst <- dsea(dds, gene_sets, contrast = ct, method = "roast", nrot = 99)
+
+## Multiple-testing correction is left to the caller.
+cam$FDR <- p.adjust(cam$PValue, method = "BH")
+
+## A bare list works too (backward compatibility).
+dd   <- as_dsea(dds)
+bare <- dsea(list(E = dd$E, weights = dd$weights, design = dd$design),
+             gene_sets, contrast = colnames(dd$design)[ncol(dd$design)],
+             method = "fry")
 }
+
+## Only one engine exists; asking for another one is an error, not a
+## silent fallback.
+tryCatch(dsea(list(E = matrix(0, 2, 2), design = matrix(1, 2, 1)),
+              list(a = "x"), engine = "other"),
+         error = function(e) conditionMessage(e))
+
+}
+\seealso{
+\code{\link{as_dsea}}, \code{\link{gsea}}
 }

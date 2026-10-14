@@ -8,8 +8,7 @@ S3method("[[",enrichResult)
 S3method("[[",gseaResult)
 S3method(as.data.frame,enrichResult)
 S3method(as.data.frame,gseaResult)
-S3method(as_elist,DESeqDataSet)
-S3method(as_elist,default)
+S3method(as_dsea,DESeqDataSet)
 S3method(as_enrichResult,default)
 S3method(as_genes,DESeqDataSet)
 S3method(as_genes,DESeqResults)
@@ -31,7 +30,7 @@ S3method(tail,gseaResult)
 export(EXTID2NAME)
 export(aggregate_enrichment)
 export(aggregate_omics)
-export(as_elist)
+export(as_dsea)
 export(as_enrichResult)
 export(as_genes)
 export(as_gseaResult)
@@ -93,7 +92,9 @@ importFrom(stats,
   setNames
 )
 importFrom(utils,
+  getFromNamespace,
   head,
+  modifyList,
   str,
   tail
 )

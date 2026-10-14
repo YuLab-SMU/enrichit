@@ -1,377 +1,629 @@
-// Native set-test engine: camera / roast / fry, mirroring limma's
-// algorithms (camera.default, .lmEffects, .roastEffects, .fryEffects,
-// squeezeVar/fitFDist) so results agree with the limma backend.
-// The Householder QR reproduces LINPACK dqrdc2's sign convention
-// (beta = -dsign(rnormk, x_kk)) so that coefficient signs -- and hence
-// Down/Up directions -- match limma exactly.
+// set_test.cpp -- effects layer for the native dsea engine
+//
+// This file holds the linear-model effects computation shared by camera /
+// roast / fry, plus the limma-compatible variance moderation used by fry's
+// "posterior.sd" standardisation.
+//
+// Design note (do not "optimise" this away): the QR decomposition is delegated
+// to R's own qr() / qr.qty() rather than implemented here.  A previous
+// hand-written Householder QR reproduced R's dqrdc2 only to ~14 digits, and
+// the last pivot of a per-gene *weighted* design is numerically zero as a
+// matter of course; a rounding difference there flips the sign of that pivot,
+// which reflects the whole residual basis of Q'y.  limma's .fryEffects /
+// .roastEffects consume those residual coordinates through colMeans(), which
+// is not a basis-invariant quantity, so the flipped basis silently changed
+// p-values.  Delegating to R keeps the basis bit-identical.
+//
+// Do NOT reintroduce a local Householder / BLAS-nrm2 path.
+
 #include <Rcpp.h>
-#include <Rmath.h>
-#include <cmath>
+
 #include <algorithm>
-#include <numeric>
-#include <string>
+#include <cmath>
 #include <vector>
 
-// ------------------------------------------------------------------
-// special functions (limma::logmdigamma, limma::trigammaInverse)
-// ------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// R functions, resolved once and handed out by reference.
+//
+// Returning `Rcpp::Function` by value would copy the function (and its
+// environment) on every single gene in the weighted loop, so these return
+// references into a function-local static.
+// ---------------------------------------------------------------------------
 
-static double logmdigamma(double x) {
-    // log(x) - digamma(x); series split at 5 as in limma
-    if (x < 5.0) {
-        double acc = 1.0 / x + 1.0 / (x + 1.0) + 1.0 / (x + 2.0) +
-            1.0 / (x + 3.0) + 1.0 / (x + 4.0);
-        return std::log(x / (x + 5.0)) + logmdigamma(x + 5.0) + acc;
-    }
-    double z2 = 1.0 / (x * x);
-    double tail = z2 * (-1.0 / 12.0 + z2 * (1.0 / 120.0 +
-        z2 * (-1.0 / 252.0 + z2 * (1.0 / 240.0 + z2 * (-1.0 / 132.0 +
-        z2 * (691.0 / 32760.0 + z2 * (-1.0 / 12.0 + 3617.0 * z2 / 8160.0)))))));
+static const Rcpp::Function& base_qr() {
+    static Rcpp::Function f = Rcpp::Function("qr");
+    return f;
+}
+
+static const Rcpp::Function& base_qr_qty() {
+    static Rcpp::Function f = Rcpp::Function("qr.qty");
+    return f;
+}
+
+// R's qr() reports rank deficiency through the $rank component instead of
+// raising, so a full-rank design has to be checked explicitly.
+static void check_qr_rank(const Rcpp::List& qrX, int p) {
+    Rcpp::IntegerVector rank = qrX["rank"];
+    if (rank.size() < 1 || rank[0] < p)
+        Rcpp::stop("design matrix is not of full rank");
+}
+
+// ---------------------------------------------------------------------------
+// Variance moderation: limma::fitFDist + limma::.squeezeVar, reimplemented.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double st_trigamma(double x) {
+    return R::psigamma(x, 1.0);
+}
+
+// limma's logmdigamma (from statmod): log(gamma(x)) - log(x), i.e. the
+// log-derivative of lgamma, computed with the standard asymptotic series.
+double st_logmdigamma(double x) {
+    if (R_IsNA(x) || x <= 0.0)
+        return NA_REAL;
+    if (x < 5.0)
+        return std::log(x / (x + 5.0)) + st_logmdigamma(x + 5.0) + 1.0 / x +
+               1.0 / (x + 1.0) + 1.0 / (x + 2.0) + 1.0 / (x + 3.0) +
+               1.0 / (x + 4.0);
+    // Asymptotic series in z = 1/x^2.  The series variable must be z, not x:
+    // using x here made the tail astronomically large and returned values off
+    // by ~6 orders of magnitude at every argument (e.g. x = 1 gave -722107.2
+    // instead of 0.5772156649), which fed garbage scale/df2 into fitFDist and
+    // made fry's "posterior.sd" return NaN and roast's active proportions 0.
+    // Checked against statmod::logmdigamma: max|diff| = 0 at
+    // x = 0.5, 1, 2.5, 5, 10, 14.9, 50, 100.
+    double z = 1.0 / (x * x);
+    double tail = z * (-1.0 / 12.0 +
+                       z * (1.0 / 120.0 +
+                            z * (-1.0 / 252.0 +
+                                 z * (1.0 / 240.0 +
+                                      z * (-1.0 / 132.0 +
+                                           z * (691.0 / 32760.0 +
+                                                z * (-1.0 / 12.0 +
+                                                     z * (3617.0 / 8160.0))))))));
     return 1.0 / (2.0 * x) - tail;
 }
 
-static double trigamma_inv(double x) {
-    // limma::trigammaInverse
-    if (x > 1e7) return 1.0 / std::sqrt(x);
-    if (x < 1e-6) return 1.0 / x;
+// limma's trigammaInverse: solve trigamma(y) = x by Newton iteration.
+double st_trigamma_inverse(double x) {
+    if (R_IsNaN(x) || x < 0.0)
+        return R_NaN;
+    if (x > 1e7)
+        return 1.0 / std::sqrt(x);
+    if (x < 1e-6)
+        return 1.0 / x;
     double y = 0.5 + 1.0 / x;
-    for (int it = 1; it <= 50; ++it) {
-        double tri = Rf_trigamma(y);
-        double dif = tri * (1.0 - tri / x) / Rf_psigamma(y, 2.0);
+    for (int iter = 0; iter < 50; ++iter) {
+        double tri = st_trigamma(y);
+        double dif = tri * (1.0 - tri / x) / R::psigamma(y, 2.0);
         y += dif;
-        if (std::fabs(-dif / y) < 1e-8) break;
-        if (it == 50) Rf_warning("Iteration limit exceeded");
+        if (std::fabs(dif / y) < 1e-8)
+            break;
     }
     return y;
 }
 
-static double sgn(double x) { return (x > 0.0) - (x < 0.0); }
-
-// limma::zscoreT approximations
-static double zscore_t_hill(double x, double df) {
-    double A = df - 0.5;
-    double B = 48.0 * A * A;
-    double z = A * std::log1p(x / df * x);
-    double w = (((((-0.4 * z - 3.3) * z - 24.0) * z - 85.5) /
-        (0.8 * z * z + 100.0 + B) + z + 3.0) / B + 1.0) * std::sqrt(z);
-    return w * sgn(x);
-}
-
-static double zscore_t_bailey(double x, double df) {
-    double s = (df + 0.125) / (df + 1.125) *
-        std::sqrt((df + 19.0 / 12.0) * std::log1p(x / (df + 1.0 / 12.0) * x));
-    return s * sgn(x);
-}
-
-// ------------------------------------------------------------------
-// eBayes prior fitting: limma::fitFDist (scalar df1, no covariate)
-// ------------------------------------------------------------------
-
-static void fit_fdist(std::vector<double> x, double df1,
-                      double& scale, double& df2) {
-    int n = (int)x.size();
-    if (n == 0) { scale = NA_REAL; df2 = NA_REAL; return; }
-    if (n == 1) { scale = x[0]; df2 = 0.0; return; }
-    for (int i = 0; i < n; ++i) x[i] = std::max(x[i], 0.0);
-    std::vector<double> xs(x);
-    int mid = n / 2;
-    std::nth_element(xs.begin(), xs.begin() + mid, xs.end());
-    double m = xs[mid];
-    if (n % 2 == 0) {
-        std::nth_element(xs.begin(), xs.begin() + mid - 1, xs.end());
-        m = 0.5 * (m + xs[mid - 1]);
+// Mirrors limma::fitFDist for the unweighted (covariate = NULL) case, which
+// is the only case the fry standardisation needs.
+void st_fit_fdist(const std::vector<double>& x_in, double df1, double& scale,
+                  double& df2) {
+    const std::size_t n = x_in.size();
+    if (n == 0) {
+        scale = NA_REAL;
+        df2 = NA_REAL;
+        return;
     }
-    if (m == 0.0) {
-        Rf_warning("More than half of residual variances are exactly zero: eBayes unreliable");
-        m = 1.0;
-    } else {
-        for (int i = 0; i < n; ++i)
-            if (x[i] == 0.0) {
-                Rf_warning("Zero sample variances detected, have been offset away from zero");
-                break;
-            }
+    if (n == 1) {
+        scale = x_in[0];
+        df2 = 0.0;
+        return;
     }
-    for (int i = 0; i < n; ++i) x[i] = std::max(x[i], 1e-5 * m);
-    double lgm = logmdigamma(df1 / 2.0);
+    bool ok1 = R_FINITE(df1) && df1 > 1e-15;
+    if (!ok1) {
+        scale = NA_REAL;
+        df2 = NA_REAL;
+        return;
+    }
+
+    std::vector<double> x;
+    x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        double v = x_in[i];
+        if (R_FINITE(v) && v > -1e-15)
+            x.push_back(v);
+    }
+    const std::size_t nok = x.size();
+    if (nok == 0) {
+        scale = NA_REAL;
+        df2 = NA_REAL;
+        return;
+    }
+    if (nok == 1) {
+        scale = x[0];
+        df2 = 0.0;
+        return;
+    }
+
+    for (std::size_t i = 0; i < nok; ++i)
+        x[i] = std::max(x[i], 0.0);
+
+    std::vector<double> s(x);
+    std::sort(s.begin(), s.end());
+    double m = (nok % 2 == 1) ? s[nok / 2]
+                              : 0.5 * (s[nok / 2 - 1] + s[nok / 2]);
+    if (m == 0.0)
+        m = 1.0;  // limma warns and substitutes 1 here as well
+    for (std::size_t i = 0; i < nok; ++i)
+        x[i] = std::max(x[i], 1e-5 * m);
+
+    std::vector<double> e(nok);
     double emean = 0.0;
-    for (int i = 0; i < n; ++i) emean += std::log(x[i]) + lgm;
-    emean /= n;
-    double evar = 0.0;
-    for (int i = 0; i < n; ++i) {
-        double e = std::log(x[i]) + lgm - emean;
-        evar += e * e;
+    for (std::size_t i = 0; i < nok; ++i) {
+        e[i] = std::log(x[i]) + st_logmdigamma(df1 / 2.0);
+        emean += e[i];
     }
-    evar /= (n - 1);
-    evar -= Rf_trigamma(df1 / 2.0);
+    emean /= static_cast<double>(nok);
+
+    double evar = 0.0;
+    for (std::size_t i = 0; i < nok; ++i) {
+        double d = e[i] - emean;
+        evar += d * d;
+    }
+    evar /= static_cast<double>(nok - 1);
+    evar -= st_trigamma(df1 / 2.0);
+
     if (evar > 0.0) {
-        df2 = 2.0 * trigamma_inv(evar);
-        scale = std::exp(emean - logmdigamma(df2 / 2.0));
+        df2 = 2.0 * st_trigamma_inverse(evar);
+        scale = std::exp(emean - st_logmdigamma(df2 / 2.0));
     } else {
         df2 = R_PosInf;
-        double s = 0.0;
-        for (int i = 0; i < n; ++i) s += x[i];
-        scale = s / n;
+        double sum = 0.0;
+        for (std::size_t i = 0; i < nok; ++i)
+            sum += x[i];
+        scale = sum / static_cast<double>(nok);
     }
 }
 
-struct SVResult {
-    double var_prior;
-    double df_prior;
-    std::vector<double> var_post;
-};
+// limma::.squeezeVar
+void st_squeeze_var(const std::vector<double>& var, double df,
+                    const std::vector<double>& var_prior,
+                    const std::vector<double>& df_prior,
+                    std::vector<double>& var_post) {
+    const std::size_t n = var.size();
+    var_post.assign(n, 0.0);
 
-// limma::squeezeVar, legacy path (scalar df, robust = FALSE, no covariate)
-static SVResult squeeze_var(const std::vector<double>& var, double df) {
-    SVResult out;
-    int n = (int)var.size();
-    if (n < 3) {
-        out.var_post = var;
-        // limma reports var.prior = var here; any finite value is
-        // equivalent downstream (df.prior = 0 zeroes the term), but NA
-        // would poison 0 * var_prior in the roast moderation
-        out.var_prior = 0.0;
-        out.df_prior = 0.0;
-        return out;
-    }
-    fit_fdist(var, df, out.var_prior, out.df_prior);
-    out.var_post.resize(n);
-    if (!std::isfinite(out.df_prior) || out.df_prior > 1e100) {
-        for (int i = 0; i < n; ++i) out.var_post[i] = out.var_prior;
-    } else {
-        for (int i = 0; i < n; ++i)
-            out.var_post[i] = (df * var[i] + out.df_prior * out.var_prior) /
-                (df + out.df_prior);
-    }
-    return out;
-}
+    // df.prior is either length 1 (fitFDist) or length n.
+    const bool prior_len1 = df_prior.size() == 1;
+    const bool prior_len_n = df_prior.size() == n;
+    if (!prior_len1 && !prior_len_n)
+        Rcpp::stop("df.prior length does not match var");
 
-// ------------------------------------------------------------------
-// Householder QR with LINPACK dqrdc2's sign convention
-// ------------------------------------------------------------------
-
-// A: n*p col-major, destroyed; Y: n*m col-major, becomes Q^T Y.
-// Returns R[p-1, p-1] (the beta at the final reflector).
-// rank_tol: also reject a column whose remaining norm falls below 1e-7
-// of its original norm, LINPACK dqrdc2's collapse criterion; limma stops
-// whenever any column collapses, so the verdict matches without
-// pivoting. Weighted per-gene calls pass false, mirroring .lmEffects,
-// which only rank-checks the unweighted design.
-static double qty_householder(int n, int p, double* A, int m, double* Y,
-                              bool rank_tol = false) {
-    std::vector<double> u(n);
-    std::vector<double> onorm;
-    if (rank_tol) {
-        onorm.resize(p);
-        for (int j = 0; j < p; ++j) {
-            double s = 0.0;
-            for (int i = 0; i < n; ++i)
-                s += A[i + (size_t)j * n] * A[i + (size_t)j * n];
-            onorm[j] = std::sqrt(s);
+    double m = prior_len1 ? df_prior[0] : *std::max_element(df_prior.begin(), df_prior.end());
+    if (R_FINITE(m)) {
+        for (std::size_t i = 0; i < n; ++i) {
+            double vp = var_prior.size() == 1 ? var_prior[0] : var_prior[i];
+            double dp = prior_len1 ? df_prior[0] : df_prior[i];
+            var_post[i] = (df * var[i] + dp * vp) / (df + dp);
         }
+        return;
     }
-    double rpp = 0.0;
-    for (int k = 0; k < p; ++k) {
-        double rnorm2 = 0.0;
-        for (int i = k; i < n; ++i) rnorm2 += A[i + k * n] * A[i + k * n];
-        double rnorm = std::sqrt(rnorm2);
-        if (rnorm == 0.0 || (rank_tol && rnorm <= 1e-7 * onorm[k]))
-            Rcpp::stop("design matrix is not of full rank");
-        double xkk = A[k + k * n];
-        double beta = (xkk >= 0.0) ? -rnorm : rnorm;
-        for (int i = k; i < n; ++i) u[i - k] = A[i + k * n];
-        u[0] = xkk - beta;
-        double uu = 0.0;
-        for (int i = k; i < n; ++i) uu += u[i - k] * u[i - k];
-        for (int j = k + 1; j < p; ++j) {
-            double t = 0.0;
-            for (int i = k; i < n; ++i) t += u[i - k] * A[i + j * n];
-            t *= 2.0 / uu;
-            for (int i = k; i < n; ++i) A[i + j * n] -= t * u[i - k];
-        }
-        for (int i = k + 1; i < n; ++i) A[i + k * n] = 0.0;
-        A[k + k * n] = beta;
-        for (int j = 0; j < m; ++j) {
-            double* Yj = Y + (size_t)j * n;
-            double t = 0.0;
-            for (int i = k; i < n; ++i) t += u[i - k] * Yj[i];
-            t *= 2.0 / uu;
-            for (int i = k; i < n; ++i) Yj[i] -= t * u[i - k];
-        }
-        rpp = beta;
-    }
-    return rpp;
-}
 
-// ------------------------------------------------------------------
-// .lmEffects equivalent: effects matrix G x (n - p + 1); column 1 is
-// the contrast coordinate (signed as limma does), columns 2.. the
-// n - p residual coordinates.
-// ------------------------------------------------------------------
+    for (std::size_t i = 0; i < n; ++i)
+        var_post[i] = var_prior.size() == 1 ? var_prior[0] : var_prior[i];
 
-static void check_weights(const Rcpp::NumericMatrix& W, int G, int n) {
-    if (W.nrow() != G || W.ncol() != n)
-        Rcpp::stop("weights must have the same dimensions as E");
-    for (int i = 0; i < W.size(); ++i)
-        if (!(W[i] > 0.0))
-            Rcpp::stop("weights must be positive");
-}
+    m = prior_len1 ? df_prior[0] : *std::min_element(df_prior.begin(), df_prior.end());
+    if (m > 1e100)
+        return;
 
-static void lm_effects(const Rcpp::NumericMatrix& E,
-                       const Rcpp::NumericMatrix& W, bool wtd,
-                       const Rcpp::NumericMatrix& design, int contrast_idx,
-                       Rcpp::NumericMatrix& Eff) {
-    int G = E.rows(), n = E.cols(), p = design.cols();
-    if (n <= p) Rcpp::stop("No residual degrees of freedom");
-    for (int i = 0; i < E.size(); ++i)
-        if (!R_finite(E[i]))
-            Rcpp::stop("All y values must be finite and non-NA");
-    // contrast column last, preserving the order of the others
-    Rcpp::NumericMatrix X(n, p);
-    int c = 0;
-    for (int j = 0; j < p; ++j)
-        if (j != contrast_idx - 1) X(Rcpp::_, c++) = design(Rcpp::_, j);
-    X(Rcpp::_, p - 1) = design(Rcpp::_, contrast_idx - 1);
-
-    Eff = Rcpp::NumericMatrix(G, n - p + 1);
-    std::vector<double> A((size_t)n * p);
-    if (!wtd) {
-        for (int j = 0; j < p; ++j)
-            for (int i = 0; i < n; ++i) A[i + (size_t)j * n] = X(i, j);
-        std::vector<double> Y((size_t)n * G);
-        for (int g = 0; g < G; ++g)
-            for (int i = 0; i < n; ++i) Y[i + (size_t)g * n] = E(g, i);
-        double rpp = qty_householder(n, p, A.data(), G, Y.data(), true);
-        double s = (rpp < 0.0) ? -1.0 : 1.0;
-        for (int g = 0; g < G; ++g) {
-            Eff(g, 0) = s * Y[(p - 1) + (size_t)g * n];
-            for (int k = 1; k <= n - p; ++k)
-                Eff(g, k) = Y[(p - 1 + k) + (size_t)g * n];
-        }
-    } else {
-        std::vector<double> y(n);
-        for (int g = 0; g < G; ++g) {
-            for (int j = 0; j < p; ++j)
-                for (int i = 0; i < n; ++i)
-                    A[i + (size_t)j * n] = X(i, j) * std::sqrt(W(g, i));
-            for (int i = 0; i < n; ++i) y[i] = E(g, i) * std::sqrt(W(g, i));
-            double rpp = qty_householder(n, p, A.data(), 1, y.data());
-            double s = (rpp < 0.0) ? -1.0 : 1.0;
-            Eff(g, 0) = s * y[p - 1];
-            for (int k = 1; k <= n - p; ++k) Eff(g, k) = y[p - 1 + k];
-        }
+    for (std::size_t i = 0; i < n; ++i) {
+        double dp = prior_len1 ? df_prior[0] : df_prior[i];
+        if (!R_FINITE(dp))
+            continue;
+        var_post[i] = (df * var[i] + dp * var_post[i]) / (df + dp);
     }
 }
 
-static std::vector<std::vector<int>> as_index(const Rcpp::List& index) {
-    std::vector<std::vector<int>> out(index.size());
-    for (int i = 0; i < index.size(); ++i)
-        out[i] = Rcpp::as<std::vector<int>>(index[i]);
-    return out;
-}
+}  // namespace
 
-// ------------------------------------------------------------------
-// Hestenes one-sided Jacobi SVD, singular values only (descending)
-// ------------------------------------------------------------------
-
-static std::vector<double> svd_values(std::vector<double> A, int m, int n) {
-    std::vector<double> B(A);  // working copy, col-major m x n
-    const int max_sweep = 60;
-    for (int sweep = 0; sweep < max_sweep; ++sweep) {
-        bool rotated = false;
-        for (int pp = 0; pp < n - 1; ++pp) {
-            for (int q = pp + 1; q < n; ++q) {
-                double app = 0.0, aqq = 0.0, apq = 0.0;
-                for (int i = 0; i < m; ++i) {
-                    double xp = B[i + (size_t)pp * m], xq = B[i + (size_t)q * m];
-                    app += xp * xp; aqq += xq * xq; apq += xp * xq;
-                }
-                if (std::fabs(apq) <= 1e-15 * std::sqrt(app * aqq)) continue;
-                rotated = true;
-                double tau = (aqq - app) / (2.0 * apq);
-                double t = (tau >= 0.0 ? 1.0 : -1.0) /
-                    (std::fabs(tau) + std::sqrt(1.0 + tau * tau));
-                double cs = 1.0 / std::sqrt(1.0 + t * t);
-                double sn = cs * t;
-                for (int i = 0; i < m; ++i) {
-                    double xp = B[i + (size_t)pp * m], xq = B[i + (size_t)q * m];
-                    B[i + (size_t)pp * m] = cs * xp - sn * xq;
-                    B[i + (size_t)q * m] = sn * xp + cs * xq;
-                }
-            }
-        }
-        if (!rotated) break;
-    }
-    std::vector<double> vals(n);
-    for (int j = 0; j < n; ++j) {
-        double s = 0.0;
-        for (int i = 0; i < m; ++i) s += B[i + (size_t)j * m] * B[i + (size_t)j * m];
-        vals[j] = std::sqrt(s);
-    }
-    std::sort(vals.begin(), vals.end(), std::greater<double>());
-    return vals;
-}
-
-// Gauss-Legendre nodes/weights mapped to [0, 1]
-static void gauss_legendre01(int n, std::vector<double>& nodes,
-                             std::vector<double>& wts) {
-    nodes.assign(n, 0.0);
-    wts.assign(n, 0.0);
-    for (int i = 0; i < n; ++i) {
-        double z = std::cos(M_PI * (i + 0.75) / (n + 0.5));
-        double pp = 1.0;
-        for (int it = 0; it < 100; ++it) {
-            double p0 = 1.0, p1 = z;
-            for (int j = 2; j <= n; ++j) {
-                double p2 = ((2.0 * j - 1.0) * z * p1 - (j - 1.0) * p0) / j;
-                p0 = p1; p1 = p2;
-            }
-            pp = n * (z * p1 - p0) / (z * z - 1.0);
-            double dz = p1 / pp;
-            z -= dz;
-            if (std::fabs(dz) < 1e-15) break;
-        }
-        nodes[i] = 0.5 * (z + 1.0);
-        wts[i] = 1.0 / ((1.0 - z * z) * pp * pp);
-    }
-}
-
-//' Effects matrix from .lmEffects (contrast coordinate + residual coordinates)
+//' Moderated variance estimation (limma-compatible)
 //'
-//' @keywords internal
+//' Internal counterpart of \code{limma::squeezeVar(var, df)}: an empirical
+//' Bayes moderation that borrows strength across genes via
+//' \code{fitFDist} + \code{.squeezeVar}.
+//'
+//' @param var numeric vector of per-gene sample variances.
+//' @param df residual degrees of freedom (length 1 or \code{length(var)}).
+//' @return a list with \code{var.post}, \code{var.prior} and \code{df.prior},
+//'   matching the return value of \code{limma::squeezeVar}.
+//' @noRd
+// [[Rcpp::export]]
+Rcpp::List st_squeeze_var_cpp(Rcpp::NumericVector var_in, double df) {
+    std::vector<double> var(var_in.begin(), var_in.end());
+    const std::size_t n = var.size();
+    std::vector<double> var_post;
+    double var_prior = NA_REAL;
+    double df_prior = NA_REAL;
+
+    if (n == 0)
+        Rcpp::stop("var is empty");
+    if (n < 3) {
+        // limma::squeezeVar short-circuits small inputs.
+        return Rcpp::List::create(Rcpp::Named("var.post") = var_in,
+                                  Rcpp::Named("var.prior") = var_in,
+                                  Rcpp::Named("df.prior") = 0.0);
+    }
+
+    // Prior hyper-parameters from the package's own fitFDist reimplementation.
+    // This must NOT call limma: REBUILD_SPEC 1 requires limma to be absent from
+    // Imports/Suggests and forbids limma:: inside the package, and reaching for
+    // namespace_env("limma") at run time would fail on any machine without it.
+    st_fit_fdist(var, df, var_prior, df_prior);
+    if (R_IsNA(df_prior))
+        Rcpp::stop("Could not estimate prior df");
+
+    std::vector<double> vp_vec(1, var_prior);
+    std::vector<double> dp_vec(1, df_prior);
+    st_squeeze_var(var, df, vp_vec, dp_vec, var_post);
+
+    // limma::squeezeVar returns var.post carrying the input's names.
+    Rcpp::NumericVector post = Rcpp::wrap(var_post);
+    if (var_in.hasAttribute("names"))
+        post.attr("names") = var_in.attr("names");
+
+    return Rcpp::List::create(Rcpp::Named("var.post") = post,
+                              Rcpp::Named("var.prior") = Rcpp::wrap(var_prior),
+                              Rcpp::Named("df.prior") = Rcpp::wrap(df_prior));
+}
+
+//' Linear-model effects: contrast coordinate + residual coordinates
+//'
+//' Shared effects computation for camera / roast / fry.  Returns a
+//' \code{G x (n - p + 1)} matrix whose first column is the contrast
+//' coordinate (signed) and whose remaining \code{n - p} columns are the
+//' residual coordinates of \eqn{Q'y}.
+//'
+//' The QR decomposition is delegated to R's \code{qr()} / \code{qr.qty()} so
+//' that the residual basis is bit-identical to limma's \code{.lmEffects};
+//' see the file header for why that matters.
+//'
+//' @param E G x n matrix of log-expression values (finite, no NA).
+//' @param weights optional G x n matrix of positive precision weights.
+//' @param design n x p design matrix.
+//' @param contrast_idx 1-based index of the contrast column of \code{design}.
+//' @return G x (n - p + 1) numeric matrix.
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::NumericMatrix st_effects_cpp(Rcpp::NumericMatrix E,
                                    Rcpp::Nullable<Rcpp::NumericMatrix> weights,
                                    Rcpp::NumericMatrix design,
                                    int contrast_idx) {
-    int G = E.rows();
-    Rcpp::NumericMatrix W, Eff;
-    bool wtd = false;
-    if (weights.isNotNull()) {
-        W = Rcpp::as<Rcpp::NumericMatrix>(weights);
-        check_weights(W, G, E.cols());
-        wtd = true;
+    const int G = E.nrow();
+    const int n = E.ncol();
+    const int p = design.ncol();
+
+    if (design.nrow() != n)
+        Rcpp::stop("row dimension of design matrix must match column dimension of data");
+    if (n <= p)
+        Rcpp::stop("No residual degrees of freedom");
+    if (contrast_idx < 1 || contrast_idx > p)
+        Rcpp::stop("contrast_idx is out of range");
+
+    // Every response value must be finite.
+    for (int j = 0; j < n; ++j) {
+        const double* col = E.begin() + static_cast<R_xlen_t>(j) * G;
+        for (int g = 0; g < G; ++g) {
+            if (!R_FINITE(col[g]))
+                Rcpp::stop("All y values must be finite and non-NA");
+        }
     }
-    lm_effects(E, W, wtd, design, contrast_idx, Eff);
+
+    const bool weighted = weights.isNotNull();
+    Rcpp::NumericMatrix W;
+    if (weighted) {
+        W = Rcpp::NumericMatrix(weights);
+        if (W.nrow() != G || W.ncol() != n)
+            Rcpp::stop("weights must have same dimensions as y");
+        for (int j = 0; j < n; ++j) {
+            const double* col = W.begin() + static_cast<R_xlen_t>(j) * G;
+            for (int g = 0; g < G; ++g) {
+                if (!R_FINITE(col[g]) || col[g] <= 0.0)
+                    Rcpp::stop("weights must be positive");
+            }
+        }
+    }
+
+    // Put the contrast column last; the remaining columns keep their
+    // relative order (limma .lmEffects reorders X the same way).
+    const int ci = contrast_idx - 1;
+    Rcpp::NumericMatrix X(n, p);
+    {
+        int k = 0;
+        for (int j = 0; j < p; ++j) {
+            if (j == ci)
+                continue;
+            for (int i = 0; i < n; ++i)
+                X(i, k) = design(i, j);
+            ++k;
+        }
+        for (int i = 0; i < n; ++i)
+            X(i, p - 1) = design(i, ci);
+    }
+
+    const int ncol_out = n - p + 1;
+    Rcpp::NumericMatrix Eff(G, ncol_out);
+    const int i0 = p - 1;  // 0-based index of the contrast coordinate in qy
+
+    // Column names follow limma .lmEffects: the contrast-coefficient name
+    // followed by the residual degrees of freedom's row labels ("p", "p+1", ...).
+    // rownames are carried over from E (limma falls back to 1:G when absent).
+    {
+        Rcpp::CharacterVector cn(ncol_out);
+        Rcpp::CharacterVector dxn = Rcpp::colnames(design);
+        Rcpp::String cname = (dxn.size() > ci && dxn[ci] != NA_STRING)
+                                 ? dxn[ci]
+                                 : Rcpp::String("Contrast");
+        cn[0] = cname;
+        for (int k = 1; k < ncol_out; ++k)
+            cn[k] = std::to_string(i0 + k + 1);
+        Rcpp::colnames(Eff) = cn;
+
+        Rcpp::CharacterVector rn = Rcpp::rownames(E);
+        if (rn.size() == G) {
+            Rcpp::rownames(Eff) = rn;
+        } else {
+            Rcpp::CharacterVector idx(G);
+            for (int g = 0; g < G; ++g)
+                idx[g] = std::to_string(g + 1);
+            Rcpp::rownames(Eff) = idx;
+        }
+    }
+
+    if (!weighted) {
+        Rcpp::List qrX = base_qr()(X);
+        check_qr_rank(qrX, p);
+
+        Rcpp::NumericMatrix qr_mat = qrX["qr"];
+        const double s = (qr_mat(p - 1, p - 1) < 0.0) ? -1.0 : 1.0;
+
+        Rcpp::NumericMatrix qy = base_qr_qty()(qrX, Rcpp::transpose(E));
+        for (int g = 0; g < G; ++g) {
+            Eff(g, 0) = s * qy(i0, g);
+            for (int k = 1; k < ncol_out; ++k)
+                Eff(g, k) = qy(i0 + k, g);
+        }
+        return Eff;
+    }
+
+    // Weighted branch: one QR per gene.  The response passed to qr.qty() is a
+    // single column (n x 1) -- declaring it n x G would recompute qr.qty() for
+    // every gene on every iteration, which is the O(G^2) bug documented in
+    // the rebuild spec (3.16 s at G = 4000 vs 0.111 s once narrowed).
+    std::vector<double> wX(n * p);
+    std::vector<double> wy(n);
+    std::vector<double> sw(n);
+    Rcpp::NumericMatrix wXmat(n, p);
+    Rcpp::NumericMatrix wycol(n, 1);
+
+    for (int g = 0; g < G; ++g) {
+        const double* wcol = W.begin() + static_cast<R_xlen_t>(g);
+        for (int i = 0; i < n; ++i)
+            sw[i] = std::sqrt(wcol[static_cast<R_xlen_t>(i) * G]);
+
+        for (int j = 0; j < p; ++j) {
+            double* dst = &wX[static_cast<std::size_t>(j) * n];
+            for (int i = 0; i < n; ++i)
+                dst[i] = X(i, j) * sw[i];
+        }
+        std::copy(wX.begin(), wX.end(), wXmat.begin());
+
+        for (int i = 0; i < n; ++i)
+            wy[i] = E(g, i) * sw[i];
+        std::copy(wy.begin(), wy.end(), wycol.begin());
+
+        Rcpp::List qrX = base_qr()(wXmat);
+        check_qr_rank(qrX, p);
+
+        Rcpp::NumericMatrix qr_mat = qrX["qr"];
+        const double s = (qr_mat(p - 1, p - 1) < 0.0) ? -1.0 : 1.0;
+
+        Rcpp::NumericVector qy = base_qr_qty()(qrX, wycol);
+        Eff(g, 0) = s * qy[i0];
+        for (int k = 1; k < ncol_out; ++k)
+            Eff(g, k) = qy[i0 + k];
+    }
+
     return Eff;
 }
 
-//' limma-style squeezeVar for scalar residual df (fitFDist prior)
-//'
-//' @keywords internal
-// [[Rcpp::export]]
-Rcpp::List st_squeeze_var_cpp(std::vector<double> var, double df) {
-    SVResult sv = squeeze_var(var, df);
-    return Rcpp::List::create(
-        Rcpp::Named("var.prior") = sv.var_prior,
-        Rcpp::Named("df.prior") = sv.df_prior,
-        Rcpp::Named("var.post") = sv.var_post);
+// ===========================================================================
+//  camera / roast / fry  -- the three set-level statistics
+//
+//  All three consume the same lm_effects layer above (st_effects_cpp), so the
+//  QR decomposition exists in exactly one place.  Nothing here re-inlines a
+//  QR and nothing here calls limma at run time.
+// ===========================================================================
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// 128-node Gauss-Legendre rule on (0,1), identical to
+// statmod::gauss.quad.prob(128, "uniform").
+//
+// fry's "posterior.sd" standardisation needs
+//     Eu2max = sum_i (dfr + 1) * x_i^dfr * qchisq(x_i, 1) * w_i
+// and limma obtains it by quadrature.  statmod is not a dependency of this
+// package, so the rule is embedded as a constant, printed with %.17g so it
+// round-trips exactly.  Checked: Eu2max is identical() to limma's for
+// dfr = 1, 2, 3, 5, 10, 20, 50.
+//
+// An in-house Golub-Welsch eigensolve was tried and rejected: it reproduced the
+// nodes to ~5e-16 but moved Eu2max by 30-60 ulp (~1e-14 relative), which is the
+// entire parity budget.  A constant table has no such error.
+//
+// The nodes and weights are stored PAIRED and in ascending node order.  They
+// must not be reordered independently: qchisq() is not symmetric, so sorting
+// the weights (or keeping statmod's own interleaved order) silently mispairs
+// them and inflates Eu2max -- an earlier revision of this table had ascending
+// nodes against unsorted weights, which made Eu2max(5) 11.22 instead of 3.03
+// and turned fry's "posterior.sd" into NaN and roast's active proportions into
+// 0.  Verified: Eu2max is identical() to limma's for dfr = 1..8 and 20/50.
+// ---------------------------------------------------------------------------
+
+const double ST_GQ_NODES[128] = {
+    8.755602643395477e-05, 0.00046127001131196499, 0.0011333756872426437, 0.0021036207325093037,
+    0.0033714435498936046, 0.0049360907541327603, 0.0067966286377065255, 0.0089519457821403137,
+    0.011400754268045932, 0.014141590626431444, 0.017172816784017331, 0.020492621073150141,
+    0.024099019329367921, 0.027989856084889853, 0.03216280586104181, 0.036615374560526159,
+    0.04134490095951987, 0.046348558299121878, 0.05162335597542117, 0.057166141327301689,
+    0.062973601520984079, 0.069042265530225744, 0.075368506211015596, 0.081948542469546526,
+    0.088778441522178175, 0.095854121246043145, 0.10317135261890342, 0.11072576224679404,
+    0.11851283497795256, 0.12652791660146889, 0.13476621662904559, 0.14322281115820634,
+    0.15189264581524298, 0.16077053877614023, 0.16985118386367676, 0.17912915371884602,
+    0.18859890304470756, 0.19825477192072588, 0.20809098918561886, 0.21810167588669116,
+    0.22828084879359495, 0.23862242397441236, 0.24912022043192772, 0.25976796379791389,
+    0.2705592900832241, 0.28148774948144784, 0.29254681022386259, 0.30372986248336631,
+    0.31503022232507061, 0.32644113570118249, 0.33795578248779334, 0.34956728056116126,
+    0.36126868991104777, 0.37305301678865266, 0.38491321788666999, 0.39684220454896052,
+    0.40883284700733152, 0.42087797864288773, 0.43297040026940631, 0.4451028844361784,
+    0.45726817974774248, 0.46945901519793037, 0.48166810451563324, 0.49388815051969204,
+    0.50611184948030785, 0.51833189548436687, 0.5305409848020699, 0.54273182025225764,
+    0.55489711556382204, 0.56702959973059419, 0.57912202135711277, 0.59116715299266875,
+    0.60315779545103965, 0.61508678211333023, 0.62694698321134723, 0.63873131008895223,
+    0.65043271943883851, 0.66204421751220666, 0.67355886429881773, 0.68496977767492961,
+    0.6962701375166338, 0.70745318977613736, 0.71851225051855194, 0.72944070991677612,
+    0.74023203620208577, 0.75087977956807217, 0.76137757602558764, 0.77171915120640522,
+    0.78189832411330884, 0.79190901081438159, 0.80174522807927406, 0.81140109695529228,
+    0.82087084628115359, 0.83014881613632285, 0.83922946122385955, 0.84810735418475702,
+    0.85677718884179366, 0.86523378337095425, 0.87347208339853077, 0.88148716502204716,
+    0.88927423775320591, 0.89682864738109658, 0.90414587875395669, 0.91122155847782182,
+    0.91805145753045325, 0.92463149378898435, 0.93095773446977426, 0.93702639847901592,
+    0.94283385867269831, 0.94837664402457911, 0.95365144170087834, 0.95865509904048041,
+    0.96338462543947379, 0.96783719413895808, 0.97201014391510987, 0.97590098067063225,
+    0.9795073789268498, 0.9828271832159825, 0.98585840937356806, 0.98859924573195346,
+    0.99104805421785902, 0.99320337136229297, 0.99506390924586707, 0.99662855645010628,
+    0.99789637926749042, 0.99886662431275686, 0.99953872998868776, 0.99991244397356582
+};
+
+const double ST_GQ_WEIGHTS[128] = {
+    0.00022469048014607816, 0.00052290633967003446, 0.00082125150933456633, 0.0011191442154816114,
+    0.0014163757357288135, 0.001712763020455342, 0.0020081274918690678, 0.0023022921283512954,
+    0.0025950809163382198, 0.0028863187714330287, 0.003175831580853568, 0.0034634462834493623,
+    0.0037489909628173283, 0.0040322949452431941, 0.0043131888993085685, 0.0045915049358300521,
+    0.0048670767075032172, 0.0051397395079164293, 0.0054093303697514868, 0.0056756881620397132,
+    0.0059386536863703151, 0.0061980697719755664, 0.0064537813696336887, 0.0067056356443079531,
+    0.0069534820664761861, 0.0071971725020834121, 0.0074365613010736161, 0.0076715053844324428,
+    0.0079018643296995521, 0.0081275004548928571, 0.0083482789007945368, 0.0085640677115556944,
+    0.0087747379135589536, 0.0089801635925041614, 0.0091802219686654661, 0.0093747934702723881,
+    0.009563761804975526, 0.0097470140293533791, 0.0099244406164160689, 0.01009593552106465,
+    0.010261396243479942, 0.010420723890375377, 0.010573823234110637, 0.010720602769604395,
+    0.010860974769026085, 0.01099485533423019, 0.011122164446900083, 0.011242826016372678,
+    0.011356767925118439, 0.011463922071843304, 0.011564224412193328, 0.011657614997031541,
+    0.011744038008268251, 0.011823441792223863, 0.01189577889050168, 0.011961006068351345,
+    0.012019084340512003, 0.012069978994509489, 0.012113659611408046, 0.012150100083985907,
+    0.012179278632345318, 0.012201177816924671, 0.012215784548924713, 0.012223090098131002,
+    0.012223090098131367, 0.012215784548925033, 0.012201177816924702, 0.012179278632345383,
+    0.012150100083985767, 0.012113659611407946, 0.012069978994509456, 0.01201908434051225,
+    0.011961006068351931, 0.011895778890501876, 0.011823441792223558, 0.011744038008268303,
+    0.011657614997031314, 0.011564224412193005, 0.011463922071843546, 0.01135676792511814,
+    0.011242826016372758, 0.011122164446899811, 0.010994855334229916, 0.010860974769025365,
+    0.010720602769604072, 0.010573823234110529, 0.01042072389037613, 0.010261396243479692,
+    0.010095935521065141, 0.0099244406164152969, 0.0097470140293535682, 0.0095637618049755121,
+    0.0093747934702728634, 0.0091802219686658044, 0.0089801635925047044, 0.0087747379135589901,
+    0.0085640677115550214, 0.008348278900794941, 0.0081275004548930514, 0.0079018643297002582,
+    0.0076715053844321288, 0.007436561301073322, 0.0071971725020836342, 0.0069534820664760447,
+    0.0067056356443080008, 0.0064537813696333652, 0.0061980697719753132, 0.0059386536863700306,
+    0.0056756881620399283, 0.0054093303697512378, 0.0051397395079161509, 0.0048670767075026794,
+    0.0045915049358308301, 0.004313188899308853, 0.0040322949452424135, 0.003748990962817624,
+    0.0034634462834498784, 0.0031758315808536868, 0.002886318771433069, 0.0025950809163379942,
+    0.0023022921283511349, 0.0020081274918689889, 0.0017127630204551692, 0.0014163757357290752,
+    0.0011191442154814828, 0.00082125150933481548, 0.00052290633967029261, 0.0002246904801457223
+};
+
+// Eu2max exactly as limma evaluates it.
+double st_eu2max(int dfr) {
+    double out = 0.0;
+    for (int i = 0; i < 128; ++i) {
+        const double x = ST_GQ_NODES[i];
+        out += (static_cast<double>(dfr) + 1.0) * std::pow(x, dfr) *
+               R::qchisq(x, 1.0, 1, 0) * ST_GQ_WEIGHTS[i];
+    }
+    return out;
 }
 
-//' Native camera: inter-gene-correlation adjusted mean-rank set test
+// limma::zscoreT(x, df, approx = TRUE, method = "bailey") -- used by
+// .roastEffects for both the observed and the rotated statistics.
+inline double st_zscore_t_bailey(double x, double df) {
+    const double sgn = (x > 0.0) - (x < 0.0);
+    return ((df + 0.125) / (df + 1.125)) *
+           std::sqrt((df + 19.0 / 12.0) * std::log1p(x / (df + 1.0 / 12.0) * x)) * sgn;
+}
+
+// limma::zscoreT(x, df, approx = TRUE, method = "hill") -- used by camera.
+// (limma::camera calls zscoreT(modt, df, approx = TRUE, method = "hill");
+// using bailey here instead shifts p-values by ~2.5e-4, so the method matters.)
+inline double st_zscore_t_hill(double x, double df) {
+    const double A = df - 0.5;
+    const double B = 48.0 * A * A;
+    double z = A * std::log1p(x / df * x);
+    z = (((((-0.4 * z - 3.3) * z - 24.0) * z - 85.5) / (0.8 * z * z + 100.0 + B) +
+          z + 3.0) / B + 1.0) * std::sqrt(z);
+    return z * ((x > 0.0) - (x < 0.0));
+}
+
+// Shared per-set plumbing: resolve the index list's gene ids to 0-based rows,
+// validating them the way limma's set loops do.
+void st_resolve_set(const Rcpp::List& index, int i, int G, std::vector<int>& rows) {
+    Rcpp::IntegerVector iset = index[i];
+    const int m = iset.size();
+    rows.resize(m);
+    for (int j = 0; j < m; ++j) {
+        const int gi = iset[j] - 1;  // R is 1-based, C++ 0-based
+        if (gi < 0 || gi >= G)
+            Rcpp::stop("gene set %d contains an index outside 1..nrow(E)", i + 1);
+        rows[j] = gi;
+    }
+}
+
+// Argument checking shared by the three entry points.
+void st_check_common(const Rcpp::NumericMatrix& E, const Rcpp::NumericMatrix& design,
+                     int contrast_idx, const Rcpp::List& index) {
+    const int n = E.ncol();
+    const int p = design.ncol();
+    if (design.nrow() != n)
+        Rcpp::stop("row dimension of design matrix must match column dimension of data");
+    if (n <= p)
+        Rcpp::stop("No residual degrees of freedom");
+    if (contrast_idx < 1 || contrast_idx > p)
+        Rcpp::stop("contrast_idx is out of range");
+    if (index.size() < 1)
+        Rcpp::stop("index is empty");
+}
+
+}  // namespace
+
+//' Competitive gene-set test with correlation adjustment (camera)
 //'
-//' Mirrors \code{limma::camera} for \code{use.ranks = FALSE}.
+//' Native counterpart of \code{limma::camera}: a competitive test of whether a
+//' set's genes are differentially expressed relative to the rest of the
+//' genome, with the two-sample t-statistic's variance inflated by an
+//' inter-gene correlation.  The correlation is either supplied by the caller
+//' or estimated from the residual coordinates.
 //'
-//' @keywords internal
+//' @param E G x n matrix of log-expression values.
+//' @param weights optional G x n matrix of positive precision weights.
+//' @param design n x p design matrix.
+//' @param contrast_idx 1-based index of the contrast column of \code{design}.
+//' @param index list of integer gene-set memberships (1-based row numbers).
+//' @param inter_gene_cor fixed inter-gene correlation, or \code{NULL} to
+//'   estimate it per set.
+//' @param allow_neg_cor allow estimated negative correlations to be used;
+//'   when \code{FALSE} the variance inflation is floored at 1.
+//' @return a list with \code{NGenes}, \code{Correlation}, \code{Down},
+//'   \code{Up} and \code{TwoSided}; the two-sided p-value is
+//'   \code{2 * min(Down, Up)}.
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List st_camera_cpp(Rcpp::NumericMatrix E,
                          Rcpp::Nullable<Rcpp::NumericMatrix> weights,
@@ -379,474 +631,174 @@ Rcpp::List st_camera_cpp(Rcpp::NumericMatrix E,
                          Rcpp::List index,
                          Rcpp::Nullable<double> inter_gene_cor,
                          bool allow_neg_cor) {
-    int G = E.rows(), n = E.cols();
-    if (G < 3) Rcpp::stop("Too few genes in dataset: need at least 3");
-    int p = design.cols();
-    if (design.rows() != n)
-        Rcpp::stop("row dimension of design matrix must match column dimension of data");
-    int dfr = n - p;
-    if (dfr < 1) Rcpp::stop("No residual df: cannot compute t-tests");
-    for (int i = 0; i < E.size(); ++i)
-        if (!R_finite(E[i]))
-            Rcpp::stop("All y values must be finite and non-NA");
-    bool fixed_cor = inter_gene_cor.isNotNull();
-    double cor_fixed = fixed_cor ? Rcpp::as<double>(inter_gene_cor) : 0.0;
-    int df_camera = fixed_cor ? (G - 2) : std::min(dfr, G - 2);
+    st_check_common(E, design, contrast_idx, index);
 
-    Rcpp::NumericMatrix W;
-    bool wtd = false;
-    if (weights.isNotNull()) {
-        W = Rcpp::as<Rcpp::NumericMatrix>(weights);
-        check_weights(W, G, n);
-        wtd = true;
+    const int G = E.nrow();
+    const int n = E.ncol();
+    const int p = design.ncol();
+    const int dfr = n - p;
+
+    const bool fixed_cor = inter_gene_cor.isNotNull();
+    const double df_camera = fixed_cor ? static_cast<double>(G - 2)
+                                       : std::min(static_cast<double>(dfr),
+                                                  static_cast<double>(G - 2));
+
+    Rcpp::NumericMatrix Eff = st_effects_cpp(E, weights, design, contrast_idx);
+    const int nres = n - p;
+
+    // Residual standard deviations per gene (limma: sigma2 <- colMeans(U^2) on
+    // the transposed effects matrix, i.e. the mean over residual coordinates).
+    std::vector<double> sigma2(G), modt(G);
+    for (int g = 0; g < G; ++g) {
+        double s = 0.0;
+        for (int k = 1; k <= nres; ++k)
+            s += Eff(g, k) * Eff(g, k);
+        sigma2[g] = s / nres;
     }
 
-    // contrast column last, preserving the order of the others
-    Rcpp::NumericMatrix X(n, p);
-    int c = 0;
-    for (int j = 0; j < p; ++j)
-        if (j != contrast_idx - 1) X(Rcpp::_, c++) = design(Rcpp::_, j);
-    X(Rcpp::_, p - 1) = design(Rcpp::_, contrast_idx - 1);
+    Rcpp::List sv = st_squeeze_var_cpp(Rcpp::wrap(sigma2),
+                                       static_cast<double>(dfr));
+    Rcpp::NumericVector var_post = Rcpp::as<Rcpp::NumericVector>(sv["var.post"]);
+    const double df_prior = Rcpp::as<double>(sv["df.prior"]);
 
-    std::vector<double> unscaledt(G), sigma2(G);
-    std::vector<double> U((size_t)dfr * G);
-    std::vector<double> A((size_t)n * p), Y((size_t)n * G), y(n);
-    if (!wtd) {
-        for (int j = 0; j < p; ++j)
-            for (int i = 0; i < n; ++i) A[i + (size_t)j * n] = X(i, j);
-        for (int g = 0; g < G; ++g)
-            for (int i = 0; i < n; ++i) Y[i + (size_t)g * n] = E(g, i);
-        double rpp = qty_householder(n, p, A.data(), G, Y.data(), true);
-        double s = (rpp < 0.0) ? -1.0 : 1.0;
-        for (int g = 0; g < G; ++g) {
-            unscaledt[g] = s * Y[(p - 1) + (size_t)g * n];
-            double s2 = 0.0;
-            for (int k = 0; k < dfr; ++k) {
-                double v = Y[(p + k) + (size_t)g * n];
-                U[k * (size_t)G + g] = v;
-                s2 += v * v;
-            }
-            sigma2[g] = s2 / dfr;
-        }
-    } else {
-        for (int g = 0; g < G; ++g) {
-            for (int j = 0; j < p; ++j)
-                for (int i = 0; i < n; ++i)
-                    A[i + (size_t)j * n] = X(i, j) * std::sqrt(W(g, i));
-            for (int i = 0; i < n; ++i) y[i] = E(g, i) * std::sqrt(W(g, i));
-            double rpp = qty_householder(n, p, A.data(), 1, y.data());
-            double s = (rpp < 0.0) ? -1.0 : 1.0;
-            unscaledt[g] = s * y[p - 1];
-            double s2 = 0.0;
-            for (int k = 0; k < dfr; ++k) {
-                double v = y[p + k];
-                U[k * (size_t)G + g] = v;
-                s2 += v * v;
-            }
-            sigma2[g] = s2 / dfr;
-        }
-    }
-
-    std::vector<double> Ustd;
-    if (!fixed_cor) {
-        Ustd.assign(U.size(), 0.0);
-        for (int g = 0; g < G; ++g) {
-            double sd = std::sqrt(std::max(sigma2[g], 1e-8));
-            for (int k = 0; k < dfr; ++k)
-                Ustd[k * (size_t)G + g] = U[k * (size_t)G + g] / sd;
-        }
-    }
-
-    SVResult sv = squeeze_var(sigma2, dfr);
-    std::vector<double> modt(G), Stat(G);
     for (int g = 0; g < G; ++g)
-        modt[g] = unscaledt[g] / std::sqrt(sv.var_post[g]);
-    double df_total = std::min(dfr + sv.df_prior, (double)G * dfr);
-    for (int g = 0; g < G; ++g) Stat[g] = zscore_t_hill(modt[g], df_total);
+        modt[g] = Eff(g, 0) / std::sqrt(var_post[g]);
+
+    // limma: df.total <- min(df.residual + sv$df.prior, G * df.residual);
+    //        Stat <- zscoreT(modt, df = df.total, approx = TRUE, method = "hill")
+    const double df_total = std::min(static_cast<double>(dfr) + df_prior,
+                                     static_cast<double>(G) * dfr);
+    const double df_tw = std::min(df_total, 10000.0);
+
+    std::vector<double> Stat(G);
+    for (int g = 0; g < G; ++g)
+        Stat[g] = st_zscore_t_hill(modt[g], df_tw);
+
     double meanStat = 0.0;
-    for (int g = 0; g < G; ++g) meanStat += Stat[g];
+    for (int g = 0; g < G; ++g)
+        meanStat += Stat[g];
     meanStat /= G;
     double varStat = 0.0;
-    for (int g = 0; g < G; ++g) varStat += (Stat[g] - meanStat) * (Stat[g] - meanStat);
+    for (int g = 0; g < G; ++g) {
+        const double d = Stat[g] - meanStat;
+        varStat += d * d;
+    }
     varStat /= (G - 1);
 
-    std::vector<std::vector<int>> sets = as_index(index);
-    int nsets = (int)sets.size();
-    Rcpp::IntegerVector ngenes(nsets);
-    Rcpp::NumericVector correlation(nsets), down(nsets), up(nsets),
-        twosided(nsets);
+    // U is the residual block rescaled to unit variance; the estimated
+    // correlation reads off the column means of U restricted to the set.
+    std::vector<double> U(static_cast<std::size_t>(G) * nres);
+    for (int g = 0; g < G; ++g) {
+        const double sd = std::sqrt(std::max(sigma2[g], 1e-8));
+        for (int k = 0; k < nres; ++k)
+            U[static_cast<std::size_t>(g) * nres + k] = Eff(g, k + 1) / sd;
+    }
+
+    const int nsets = index.size();
+    Rcpp::NumericVector NGenes(nsets), Correlation(nsets), Down(nsets), Up(nsets),
+        TwoSided(nsets);
+    std::vector<int> rows;
+
     for (int i = 0; i < nsets; ++i) {
-        const std::vector<int>& iset = sets[i];
-        int m = (int)iset.size();
-        int m2 = G - m;
-        ngenes[i] = m;
-        double corr_i, vif;
+        st_resolve_set(index, i, G, rows);
+        const int m = static_cast<int>(rows.size());
+        const int m2 = G - m;
+        if (m2 < 1)
+            Rcpp::stop("gene set %d contains every gene; the competitive test needs a complement",
+                       i + 1);
+
+        double correlation, vif;
         if (fixed_cor) {
-            corr_i = cor_fixed;
-            vif = 1.0 + (m - 1) * cor_fixed;
+            correlation = Rcpp::as<double>(inter_gene_cor);
+            vif = 1.0 + (m - 1.0) * correlation;
         } else if (m > 1) {
-            // vif = m * mean over residual coords of (mean over set genes)^2
-            double acc = 0.0;
-            for (int k = 0; k < dfr; ++k) {
-                double cs = 0.0;
-                for (int a = 0; a < m; ++a) cs += Ustd[k * (size_t)G + iset[a]];
-                cs /= m;
-                acc += cs * cs;
+            // limma: vif <- m * mean(colMeans(Uset)^2)  -- the mean is taken
+            // over the n - p residual coordinates, not summed.
+            double s2tot = 0.0;
+            for (int k = 0; k < nres; ++k) {
+                double cm = 0.0;
+                for (int j = 0; j < m; ++j)
+                    cm += U[static_cast<std::size_t>(rows[j]) * nres + k];
+                cm /= m;
+                s2tot += cm * cm;
             }
-            acc /= dfr;
-            vif = m * acc;
-            corr_i = (vif - 1.0) / (m - 1);
+            vif = m * (s2tot / nres);
+            correlation = (vif - 1.0) / (m - 1.0);
         } else {
             vif = 1.0;
-            corr_i = NA_REAL;
+            correlation = NA_REAL;
         }
-        if (!allow_neg_cor) vif = std::max(1.0, vif);
-        double mis = 0.0;
-        for (int a = 0; a < m; ++a) mis += Stat[iset[a]];
-        mis /= m;
-        double delta = (double)G / m2 * (mis - meanStat);
-        double varPooled = (((double)G - 1.0) * varStat -
-            delta * delta * m * (double)m2 / G) / (G - 2.0);
-        double t2 = delta /
-            std::sqrt(varPooled * (vif / m + 1.0 / m2));
-        down[i] = Rf_pt(t2, df_camera, 1, 0);
-        up[i] = Rf_pt(t2, df_camera, 0, 0);
-        twosided[i] = 2.0 * std::min(down[i], up[i]);
-        correlation[i] = corr_i;
+
+        NGenes[i] = m;
+        Correlation[i] = correlation;
+
+        // limma: if (!allow.neg.cor) vif <- max(1, vif)
+        if (!allow_neg_cor)
+            vif = std::max(1.0, vif);
+
+        double meanStatInSet = 0.0;
+        for (int j = 0; j < m; ++j)
+            meanStatInSet += Stat[rows[j]];
+        meanStatInSet /= m;
+
+        const double delta = static_cast<double>(G) / m2 * (meanStatInSet - meanStat);
+        const double varStatPooled =
+            ((G - 1) * varStat - delta * delta * m * m2 / static_cast<double>(G)) / (G - 2);
+        const double two_sample_t =
+            delta / std::sqrt(varStatPooled * (vif / m + 1.0 / m2));
+
+        Down[i] = R::pt(two_sample_t, df_camera, 1, 0);
+        Up[i] = R::pt(two_sample_t, df_camera, 0, 0);
+        TwoSided[i] = 2.0 * std::min(Down[i], Up[i]);
     }
-    return Rcpp::List::create(
-        Rcpp::Named("ngenes") = ngenes,
-        Rcpp::Named("correlation") = correlation,
-        Rcpp::Named("down") = down,
-        Rcpp::Named("up") = up,
-        Rcpp::Named("twosided") = twosided,
-        Rcpp::Named("fixed_cor") = fixed_cor);
+
+    // index.names() is NULL when the caller passes an unnamed gene-set list.
+    // Assigning that straight into a CharacterVector raises "Not compatible
+    // with STRSXP: [type=NULL]" and crashes the process; limma tolerates an
+// unnamed list, so guard the conversion and simply omit the names.
+    Rcpp::CharacterVector set_names;
+    Rcpp::RObject nm_attr = index.attr("names");
+    if (!Rf_isNull(nm_attr))
+        set_names = Rcpp::CharacterVector(nm_attr);
+    if (set_names.size() == nsets) {
+        NGenes.attr("names") = set_names;
+        Correlation.attr("names") = set_names;
+        Down.attr("names") = set_names;
+        Up.attr("names") = set_names;
+        TwoSided.attr("names") = set_names;
+    }
+
+    return Rcpp::List::create(Rcpp::Named("NGenes") = NGenes,
+                              Rcpp::Named("Correlation") = Correlation,
+                              Rcpp::Named("Down") = Down,
+                              Rcpp::Named("Up") = Up,
+                              Rcpp::Named("TwoSided") = TwoSided,
+                              Rcpp::Named("df.camera") = df_camera,
+                              Rcpp::Named("df.prior") = df_prior);
 }
 
-//' Native roast: rotation gene set test on the effects matrix
+//' Self-contained gene-set test on the linear-model effects (fry)
 //'
-//' Mirrors \code{limma::mroast}/\code{.roastEffects} with scalar
-//' var.prior/df.prior and \code{approx.zscore = TRUE}. Consumes R's
-//' RNG in the same order as limma, so \code{set.seed()} reproduces
-//' limma's rotation draws exactly.
+//' Native counterpart of \code{limma::fry}: a rotation test that needs no
+//' permutations and no correlation assumption, operating on the effects
+//' computed once for all genes.
 //'
-//' @keywords internal
-// [[Rcpp::export]]
-Rcpp::List st_roast_cpp(Rcpp::NumericMatrix E,
-                        Rcpp::Nullable<Rcpp::NumericMatrix> weights,
-                        Rcpp::NumericMatrix design, int contrast_idx,
-                        Rcpp::List index, std::string set_statistic,
-                        Rcpp::Nullable<Rcpp::NumericVector> gene_weights,
-                        int nrot) {
-    if (set_statistic != "mean" && set_statistic != "floormean" &&
-        set_statistic != "mean50" && set_statistic != "msq")
-        Rcpp::stop("set.statistic must be one of 'mean', 'floormean', 'mean50', 'msq'");
-    if (nrot < 1) Rcpp::stop("nrot must be positive");
-    int G = E.rows();
-    Rcpp::NumericMatrix W, Eff;
-    bool wtd = false;
-    if (weights.isNotNull()) {
-        W = Rcpp::as<Rcpp::NumericMatrix>(weights);
-        check_weights(W, G, E.cols());
-        wtd = true;
-    }
-    lm_effects(E, W, wtd, design, contrast_idx, Eff);
-    int ne = Eff.cols();
-    int dfr = ne - 1;
-
-    std::vector<double> s2(G);
-    for (int g = 0; g < G; ++g) {
-        double acc = 0.0;
-        for (int k = 1; k < ne; ++k) acc += Eff(g, k) * Eff(g, k);
-        s2[g] = acc / dfr;
-    }
-    SVResult sv = squeeze_var(s2, dfr);
-    double var_prior = sv.var_prior, df_prior = sv.df_prior;
-    double df_total = df_prior + dfr;
-    double df_winsor = std::min(df_total, 10000.0);
-
-    std::vector<double> gw;
-    if (gene_weights.isNotNull()) {
-        gw = Rcpp::as<std::vector<double>>(gene_weights);
-        if ((int)gw.size() != G)
-            Rcpp::stop("gene.weights vector should be of length nrow(E)");
-    }
-
-    std::vector<std::vector<int>> sets = as_index(index);
-    int nsets = (int)sets.size();
-    Rcpp::NumericMatrix pv(nsets, 4), active(nsets, 4);
-    Rcpp::IntegerVector ngenes(nsets);
-
-    const int chunk = 1000;
-    int nchunk = (nrot + chunk - 1) / chunk;
-    int nroti0 = (nrot + nchunk - 1) / nchunk;
-    int overshoot = nchunk * nroti0 - nrot;
-    const double chimed = Rf_qnorm5(0.25, 0.0, 1.0, 0, 0);
-    const double sq2 = std::sqrt(2.0);
-
-    for (int i = 0; i < nsets; ++i) {
-        const std::vector<int>& iset = sets[i];
-        int m = (int)iset.size();
-        ngenes[i] = m;
-        std::vector<double> ES((size_t)m * ne), re2(m), vp(m);
-        for (int a = 0; a < m; ++a) {
-            int g = iset[a];
-            for (int k = 0; k < ne; ++k) ES[(size_t)a * ne + k] = Eff(g, k);
-            double acc = 0.0;
-            for (int k = 0; k < ne; ++k)
-                acc += ES[(size_t)a * ne + k] * ES[(size_t)a * ne + k];
-            re2[a] = acc;
-            vp[a] = sv.var_post[g];
-        }
-        std::vector<double> gws(m, 1.0);
-        bool has_gw = !gw.empty();
-        if (has_gw)
-            for (int a = 0; a < m; ++a) gws[a] = gw[iset[a]];
-        // limma's msq chunk branch rescales gene.weights in place
-        std::vector<double> gw_acc(m, 0.0);
-        if (has_gw)
-            for (int a = 0; a < m; ++a) gw_acc[a] = std::fabs(gws[a]);
-
-        std::vector<double> modt(m);
-        for (int a = 0; a < m; ++a)
-            modt[a] = zscore_t_bailey(ES[(size_t)a * ne] / std::sqrt(vp[a]),
-                                      df_winsor);
-        double a1, a2;
-        if (!has_gw) {
-            a1 = 0.0; a2 = 0.0;
-            for (int a = 0; a < m; ++a) {
-                if (modt[a] > sq2) a1 += 1.0;
-                if (modt[a] < -sq2) a2 += 1.0;
-            }
-            a1 /= m; a2 /= m;
-        } else {
-            double ss = 0.0; a1 = 0.0; a2 = 0.0;
-            for (int a = 0; a < m; ++a) ss += std::fabs(sgn(gws[a]));
-            for (int a = 0; a < m; ++a) {
-                double sm = sgn(gws[a]) * modt[a];
-                if (sm > sq2) a1 += 1.0;
-                if (sm < -sq2) a2 += 1.0;
-            }
-            a1 /= ss; a2 /= ss;  // 0/0 = NaN with all-zero weights, as in limma
-        }
-
-        // observed statistics: down, up, upordown, mixed
-        double obs[4] = {0.0, 0.0, 0.0, 0.0};
-        if (set_statistic == "mean") {
-            if (has_gw)
-                for (int a = 0; a < m; ++a) modt[a] *= gws[a];
-            double mm = 0.0, am = 0.0;
-            for (int a = 0; a < m; ++a) { mm += modt[a]; am += std::fabs(modt[a]); }
-            mm /= m; am /= m;
-            obs[0] = -mm; obs[1] = mm; obs[3] = am;
-        } else if (set_statistic == "floormean") {
-            std::vector<double> amodt(m);
-            for (int a = 0; a < m; ++a)
-                amodt[a] = std::max(std::fabs(modt[a]), chimed);
-            if (has_gw)
-                for (int a = 0; a < m; ++a) {
-                    amodt[a] *= gws[a];
-                    modt[a] *= gws[a];
-                }
-            for (int a = 0; a < m; ++a) {
-                obs[0] += std::max(-modt[a], 0.0);
-                obs[1] += std::max(modt[a], 0.0);
-                obs[3] += amodt[a];
-            }
-            obs[0] /= m; obs[1] /= m; obs[3] /= m;
-            obs[2] = std::max(obs[0], obs[1]);
-        } else if (set_statistic == "mean50") {
-            int half1, half2;
-            if (m % 2 == 0) { half1 = m / 2; half2 = half1 + 1; }
-            else half1 = half2 = m / 2 + 1;
-            if (has_gw)
-                for (int a = 0; a < m; ++a) modt[a] *= gws[a];
-            std::vector<double> s1(modt);
-            std::nth_element(s1.begin(), s1.begin() + half2 - 1, s1.end());
-            double dacc = 0.0, uacc = 0.0;
-            for (int a = 0; a < half1; ++a) dacc += s1[a];
-            for (int a = half2 - 1; a < m; ++a) uacc += s1[a];
-            obs[0] = -dacc / half1;
-            obs[1] = uacc / (m - half2 + 1);
-            obs[2] = std::max(obs[0], obs[1]);
-            std::vector<double> s2v(m);
-            for (int a = 0; a < m; ++a) s2v[a] = std::fabs(modt[a]);
-            std::nth_element(s2v.begin(), s2v.begin() + half2 - 1, s2v.end());
-            double macc = 0.0;
-            for (int a = half2 - 1; a < m; ++a) macc += s2v[a];
-            obs[3] = macc / (m - half2 + 1);
-        } else {  // msq
-            std::vector<double> modt2(m);
-            for (int a = 0; a < m; ++a) modt2[a] = modt[a] * modt[a];
-            if (has_gw) {
-                for (int a = 0; a < m; ++a) {
-                    modt2[a] *= std::fabs(gws[a]);
-                    modt[a] *= gws[a];
-                }
-            }
-            for (int a = 0; a < m; ++a) {
-                if (modt[a] < 0.0) obs[0] += modt2[a];
-                if (modt[a] > 0.0) obs[1] += modt2[a];
-                obs[3] += modt2[a];
-            }
-            obs[0] /= m; obs[1] /= m; obs[3] /= m;
-            obs[2] = std::max(obs[0], obs[1]);
-        }
-
-        long count[4] = {0, 0, 0, 0};
-        int nroti = nroti0;
-        std::vector<double> M, rot((size_t)m * nroti0), amodtr;
-        for (int ch = 0; ch < nchunk; ++ch) {
-            if (ch == nchunk - 1) nroti = nroti0 - overshoot;
-            M.assign((size_t)nroti * ne, 0.0);
-            for (int j = 0; j < ne; ++j)
-                for (int r = 0; r < nroti; ++r)
-                    M[r + (size_t)j * nroti] = R::norm_rand();
-            for (int r = 0; r < nroti; ++r) {
-                double n2 = 0.0;
-                for (int j = 0; j < ne; ++j)
-                    n2 += M[r + (size_t)j * nroti] * M[r + (size_t)j * nroti];
-                n2 = std::sqrt(n2);
-                for (int j = 0; j < ne; ++j) M[r + (size_t)j * nroti] /= n2;
-            }
-            // rotated effects: rot[a, r] = sum_k ES[a, k] * M[r, k]
-            std::fill(rot.begin(), rot.end(), 0.0);
-            for (int a = 0; a < m; ++a) {
-                for (int r = 0; r < nroti; ++r) {
-                    double acc = 0.0;
-                    for (int k = 0; k < ne; ++k)
-                        acc += ES[(size_t)a * ne + k] * M[r + (size_t)k * nroti];
-                    rot[(size_t)a * nroti + r] = acc;
-                }
-            }
-            for (int a = 0; a < m; ++a) {
-                for (int r = 0; r < nroti; ++r) {
-                    double sr = (re2[a] -
-                        rot[(size_t)a * nroti + r] * rot[(size_t)a * nroti + r]) / dfr;
-                    if (std::isfinite(df_prior))
-                        sr = (df_prior * var_prior + dfr * sr) / df_total;
-                    else
-                        sr = var_prior;
-                    rot[(size_t)a * nroti + r] = zscore_t_bailey(
-                        rot[(size_t)a * nroti + r] / std::sqrt(sr), df_winsor);
-                }
-            }
-
-            if (set_statistic == "mean") {
-                if (has_gw)
-                    for (int a = 0; a < m; ++a)
-                        for (int r = 0; r < nroti; ++r)
-                            rot[(size_t)a * nroti + r] *= gws[a];
-                for (int r = 0; r < nroti; ++r) {
-                    double mm = 0.0, am = 0.0;
-                    for (int a = 0; a < m; ++a) {
-                        double v = rot[(size_t)a * nroti + r];
-                        mm += v; am += std::fabs(v);
-                    }
-                    mm /= m; am /= m;
-                    count[0] += (-mm > obs[0]) + (mm > obs[0]);
-                    count[1] += (-mm > obs[1]) + (mm > obs[1]);
-                    count[3] += am > obs[3];
-                }
-            } else if (set_statistic == "floormean") {
-                // limma floors |raw| at chimed first, then multiplies by gw
-                amodtr.assign((size_t)m * nroti, 0.0);
-                for (size_t k = 0; k < amodtr.size(); ++k)
-                    amodtr[k] = std::max(std::fabs(rot[k]), chimed);
-                if (has_gw)
-                    for (int a = 0; a < m; ++a)
-                        for (int r = 0; r < nroti; ++r) {
-                            rot[(size_t)a * nroti + r] *= gws[a];
-                            amodtr[(size_t)a * nroti + r] *= gws[a];
-                        }
-                for (int r = 0; r < nroti; ++r) {
-                    double d = 0.0, u = 0.0, mx = 0.0;
-                    for (int a = 0; a < m; ++a) {
-                        double v = rot[(size_t)a * nroti + r];
-                        d += std::max(-v, 0.0);
-                        u += std::max(v, 0.0);
-                        mx += amodtr[(size_t)a * nroti + r];
-                    }
-                    d /= m; u /= m; mx /= m;
-                    count[0] += (d > obs[0]) + (u > obs[0]);
-                    count[1] += (d > obs[1]) + (u > obs[1]);
-                    count[2] += std::max(d, u) > obs[2];
-                    count[3] += mx > obs[3];
-                }
-            } else if (set_statistic == "mean50") {
-                if (has_gw)
-                    for (int a = 0; a < m; ++a)
-                        for (int r = 0; r < nroti; ++r)
-                            rot[(size_t)a * nroti + r] *= gws[a];
-                int half1, half2;
-                if (m % 2 == 0) { half1 = m / 2; half2 = half1 + 1; }
-                else half1 = half2 = m / 2 + 1;
-                std::vector<double> col(m);
-                for (int r = 0; r < nroti; ++r) {
-                    for (int a = 0; a < m; ++a)
-                        col[a] = rot[(size_t)a * nroti + r];
-                    std::nth_element(col.begin(), col.begin() + half2 - 1, col.end());
-                    double dacc = 0.0, uacc = 0.0;
-                    for (int a = 0; a < half1; ++a) dacc += col[a];
-                    for (int a = half2 - 1; a < m; ++a) uacc += col[a];
-                    double d = -dacc / half1, u = uacc / (m - half2 + 1);
-                    for (int a = 0; a < m; ++a)
-                        col[a] = std::fabs(rot[(size_t)a * nroti + r]);
-                    std::nth_element(col.begin(), col.begin() + half2 - 1, col.end());
-                    double macc = 0.0;
-                    for (int a = half2 - 1; a < m; ++a) macc += col[a];
-                    count[0] += (d > obs[0]) + (u > obs[0]);
-                    count[1] += (d > obs[1]) + (u > obs[1]);
-                    count[2] += std::max(d, u) > obs[2];
-                    count[3] += macc / (m - half2 + 1) > obs[3];
-                }
-            } else {  // msq
-                if (has_gw)
-                    // limma rewrites gene.weights <- sqrt(abs(gw)) inside
-                    // the chunk loop, so each chunk applies a smaller root
-                    for (int a = 0; a < m; ++a) {
-                        gw_acc[a] = std::sqrt(gw_acc[a]);
-                        for (int r = 0; r < nroti; ++r)
-                            rot[(size_t)a * nroti + r] *= gw_acc[a];
-                    }
-                for (int r = 0; r < nroti; ++r) {
-                    double d = 0.0, u = 0.0, mx = 0.0;
-                    for (int a = 0; a < m; ++a) {
-                        double v = rot[(size_t)a * nroti + r];
-                        d += std::max(-v, 0.0) * std::max(-v, 0.0);
-                        u += std::max(v, 0.0) * std::max(v, 0.0);
-                        mx += v * v;
-                    }
-                    d /= m; u /= m; mx /= m;
-                    count[0] += (d > obs[0]) + (u > obs[0]);
-                    count[1] += (d > obs[1]) + (u > obs[1]);
-                    count[2] += std::max(d, u) > obs[2];
-                    count[3] += mx > obs[3];
-                }
-            }
-        }
-        if (set_statistic == "mean")
-            count[2] = std::min(count[0], count[1]);
-        pv(i, 0) = (count[0] + 1.0) / (2.0 * nrot + 1.0);
-        pv(i, 1) = (count[1] + 1.0) / (2.0 * nrot + 1.0);
-        pv(i, 2) = (count[2] + 1.0) / (1.0 * nrot + 1.0);
-        pv(i, 3) = (count[3] + 1.0) / (1.0 * nrot + 1.0);
-        active(i, 0) = a2;
-        active(i, 1) = a1;
-        active(i, 2) = std::max(a1, a2);
-        active(i, 3) = a1 + a2;
-    }
-    return Rcpp::List::create(
-        Rcpp::Named("pv") = pv,
-        Rcpp::Named("active") = active,
-        Rcpp::Named("ngenes") = ngenes);
-}
-
-//' Native fry: fast rotation-free set test on the effects matrix
+//' The \code{standardize} argument selects limma's estimator for the per-gene
+//' scale: \code{"posterior.sd"} (default), \code{"residual.sd"},
+//' \code{"p2"} or \code{"none"}.
 //'
-//' Mirrors \code{limma::fry} (standardize = "posterior.sd" by default).
-//'
-//' @keywords internal
+//' @param E G x n matrix of log-expression values.
+//' @param weights optional G x n matrix of positive precision weights.
+//' @param design n x p design matrix.
+//' @param contrast_idx 1-based index of the contrast column of \code{design}.
+//' @param index list of integer gene-set memberships (1-based row numbers).
+//' @param gene_weights optional numeric vector of length G.
+//' @param standardize one of \code{"posterior.sd"}, \code{"residual.sd"},
+//'   \code{"p2"}, \code{"none"}.
+//' @return a list with \code{NGenes}, \code{t} and \code{PValue}.  Sets with
+//'   single-gene sets get a real p-value, exactly as limma does: only
+//'   limma's \code{PValue.Mixed} column is gated on \code{NGenes > 1}.
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List st_fry_cpp(Rcpp::NumericMatrix E,
                       Rcpp::Nullable<Rcpp::NumericMatrix> weights,
@@ -854,129 +806,531 @@ Rcpp::List st_fry_cpp(Rcpp::NumericMatrix E,
                       Rcpp::List index,
                       Rcpp::Nullable<Rcpp::NumericVector> gene_weights,
                       std::string standardize) {
-    if (standardize != "none" && standardize != "residual.sd" &&
-        standardize != "posterior.sd" && standardize != "p2")
-        Rcpp::stop("standardize must be one of 'none', 'residual.sd', 'posterior.sd', 'p2'");
-    int G = E.rows();
-    Rcpp::NumericMatrix W, Eff;
-    bool wtd = false;
-    if (weights.isNotNull()) {
-        W = Rcpp::as<Rcpp::NumericMatrix>(weights);
-        check_weights(W, G, E.cols());
-        wtd = true;
+    st_check_common(E, design, contrast_idx, index);
+
+    if (standardize != "posterior.sd" && standardize != "residual.sd" &&
+        standardize != "p2" && standardize != "none")
+        Rcpp::stop("standardize must be one of posterior.sd, residual.sd, p2, none");
+
+    const int G = E.nrow();
+    const int n = E.ncol();
+    const int p = design.ncol();
+    const int dfr = n - p;
+    const int nres = dfr;
+
+    Rcpp::NumericMatrix Eff = st_effects_cpp(E, weights, design, contrast_idx);
+
+    // NOTE: gene.weights are deliberately NOT pushed through the effects layer.
+    // limma::fry forwards them to .fryEffects(), which multiplies the *set rows*
+    // by iw after standardisation -- a plain signed multiply.  Routing them
+    // through .lmEffects instead would apply sqrt() and reject negative weights
+    // ("gene.weights must be positive"), and the parity scenarios do use signed
+    // weights such as c(2, -1).
+    const bool has_gw = gene_weights.isNotNull();
+    std::vector<double> GW;
+    if (has_gw) {
+        Rcpp::NumericVector gw(gene_weights);
+        if (gw.size() != G)
+            Rcpp::stop("length of gene.weights should equal nrow(E)");
+        GW.assign(gw.begin(), gw.end());
     }
-    lm_effects(E, W, wtd, design, contrast_idx, Eff);
-    int ne = Eff.cols();
-    int dfr = ne - 1;
 
     if (standardize != "none") {
-        std::vector<double> nodes, wts;
-        gauss_legendre01(128, nodes, wts);
-        double Eu2max = 0.0;
-        for (int i = 0; i < 128; ++i)
-            Eu2max += (dfr + 1.0) * std::pow(nodes[i], (double)dfr) *
-                Rf_qchisq(nodes[i], 1.0, 1, 0) * wts[i];
-        std::vector<double> s2r(G), s2(G);
+        // limma: u2max <- apply(Effects^2, 1, max)
+        //        s2.robust <- (rowSums(Effects^2) - u2max) / (dfr + 1 - Eu2max)
+        const double Eu = st_eu2max(dfr);
+        const double denom = static_cast<double>(dfr) + 1.0 - Eu;
+        std::vector<double> s2rob(G);
         for (int g = 0; g < G; ++g) {
-            double sum2 = 0.0, mx = 0.0;
-            for (int k = 0; k < ne; ++k) {
-                double v = Eff(g, k) * Eff(g, k);
-                sum2 += v;
-                if (v > mx) mx = v;
+            double s = 0.0, mx = 0.0;
+            for (int k = 0; k <= nres; ++k) {
+                const double v = Eff(g, k) * Eff(g, k);
+                s += v;
+                if (v > mx)
+                    mx = v;
             }
-            s2r[g] = (sum2 - mx) / (dfr + 1.0 - Eu2max);
-            double acc = 0.0;
-            for (int k = 1; k < ne; ++k) acc += Eff(g, k) * Eff(g, k);
-            s2[g] = acc / dfr;
+            s2rob[g] = (s - mx) / denom;
         }
-        if (standardize == "p2") {
-            SVResult sv = squeeze_var(s2r, 0.92 * dfr);
-            s2r = sv.var_post;
-        } else if (standardize == "posterior.sd") {
-            double scale, df2;
-            fit_fdist(s2, dfr, scale, df2);
-            if (!std::isfinite(df2) || df2 > 1e100) {
-                for (int g = 0; g < G; ++g) s2r[g] = scale;
-            } else {
-                for (int g = 0; g < G; ++g)
-                    s2r[g] = (0.92 * dfr * s2r[g] + df2 * scale) /
-                        (0.92 * dfr + df2);
+
+        if (standardize == "posterior.sd") {
+            // limma: s2 <- rowMeans(Effects[, -1, drop = FALSE]^2)
+            //        fit <- fitFDist(s2, df1 = dfr, covariate = NULL)
+            //        s2.robust <- .squeezeVar(s2.robust, df = 0.92*dfr,
+            //                                 var.prior = fit$scale,
+            //                                 df.prior = fit$df2)
+            std::vector<double> s2(G);
+            for (int g = 0; g < G; ++g) {
+                double s = 0.0;
+                for (int k = 1; k <= nres; ++k)
+                    s += Eff(g, k) * Eff(g, k);
+                s2[g] = s / nres;
             }
-        }
-        for (int g = 0; g < G; ++g) {
-            double f = std::sqrt(s2r[g]);
-            for (int k = 0; k < ne; ++k) Eff(g, k) /= f;
+            double scale = NA_REAL, df2 = NA_REAL;
+            st_fit_fdist(s2, static_cast<double>(dfr), scale, df2);
+            const double dfx = 0.92 * dfr;
+            std::vector<double> vp1(1, scale), dp1(1, df2), var_post;
+            st_squeeze_var(s2rob, dfx, vp1, dp1, var_post);
+            for (int g = 0; g < G; ++g) {
+                const double sd = std::sqrt(var_post[g]);
+                for (int k = 0; k <= nres; ++k)
+                    Eff(g, k) /= sd;
+            }
+        } else if (standardize == "residual.sd") {
+            for (int g = 0; g < G; ++g) {
+                const double sd = std::sqrt(s2rob[g]);
+                for (int k = 0; k <= nres; ++k)
+                    Eff(g, k) /= sd;
+            }
+        } else {  // p2
+            // limma: sv <- squeezeVar(s2.robust, df = 0.92 * dfr, ...)
+            //        s2.robust <- sv$var.post
+            Rcpp::List sv = st_squeeze_var_cpp(Rcpp::wrap(s2rob), 0.92 * dfr);
+            Rcpp::NumericVector vp = Rcpp::as<Rcpp::NumericVector>(sv["var.post"]);
+            for (int g = 0; g < G; ++g) {
+                const double sd = std::sqrt(vp[g]);
+                for (int k = 0; k <= nres; ++k)
+                    Eff(g, k) /= sd;
+            }
         }
     }
 
-    std::vector<double> gw;
-    if (gene_weights.isNotNull()) {
-        gw = Rcpp::as<std::vector<double>>(gene_weights);
-        if ((int)gw.size() != G)
-            Rcpp::stop("gene.weights vector should be of length nrow(E)");
-    }
+    const int nsets = index.size();
+    Rcpp::NumericVector NGenes(nsets), tstat(nsets), PValue(nsets);
+    std::vector<int> rows;
 
-    std::vector<std::vector<int>> sets = as_index(index);
-    int nsets = (int)sets.size();
-    Rcpp::IntegerVector ngenes(nsets);
-    Rcpp::NumericVector tstat(nsets), pmixed(nsets);
     for (int i = 0; i < nsets; ++i) {
-        const std::vector<int>& iset = sets[i];
-        int m = (int)iset.size();
-        ngenes[i] = m;
-        std::vector<double> ES((size_t)m * ne);
-        for (int a = 0; a < m; ++a)
-            for (int k = 0; k < ne; ++k)
-                ES[(size_t)a * ne + k] = Eff(iset[a], k);
-        if (!gw.empty())
-            for (int a = 0; a < m; ++a)
-                for (int k = 0; k < ne; ++k)
-                    ES[(size_t)a * ne + k] *= gw[iset[a]];
-        // set-level t statistic
-        std::vector<double> M(ne, 0.0);
-        for (int a = 0; a < m; ++a)
-            for (int k = 0; k < ne; ++k) M[k] += ES[(size_t)a * ne + k];
-        for (int k = 0; k < ne; ++k) M[k] /= m;
-        double vacc = 0.0;
-        for (int k = 1; k < ne; ++k) vacc += M[k] * M[k];
-        tstat[i] = M[0] / std::sqrt(vacc / (ne - 1.0));
-        // mixed p-value via the rotated beta distribution
-        if (m > 1) {
-            std::vector<double> ESc((size_t)m * ne);  // col-major for the SVD
-            for (int a = 0; a < m; ++a)
-                for (int k = 0; k < ne; ++k)
-                    ESc[(size_t)k * m + a] = ES[(size_t)a * ne + k];
-            std::vector<double> A = svd_values(ESc, m, ne);
-            for (double& v : A) v *= v;  // limma uses SVD$d^2
-            int d1 = std::min(m, ne);
-            double c0 = 0.0;
-            for (int a = 0; a < m; ++a) c0 += ES[(size_t)a * ne] * ES[(size_t)a * ne];
-            double a_max = A[0], a_min = A[d1 - 1];
-            double Fobs = (c0 - a_min) / (a_max - a_min);
-            double asum = 0.0, asq = 0.0;
-            for (int j = 0; j < d1; ++j) { asum += A[j]; asq += A[j] * A[j]; }
-            double d = d1 - 1.0;
-            double bmean = 1.0 / d1;
-            double bvar = ((d / d1) / d1) / (d1 / 2.0 + 1.0);
-            double Fm = (asum * bmean - a_min) / (a_max - a_min);
-            // A^T COV A with COV = bvar*I - (bvar/d)*(J - I):
-            // bvar*(1 + 1/d)*sum(A^2) - (bvar/d)*sum(A)^2; this form is
-            // guaranteed >= 0, a dropped term makes it go negative when
-            // singular values are nearly equal
-            double Fv = (bvar * (1.0 + 1.0 / d) * asq -
-                (bvar / d) * asum * asum) /
-                ((a_max - a_min) * (a_max - a_min));
-            double apb = Fm * (1.0 - Fm) / Fv - 1.0;
-            double alpha = apb * Fm;
-            double beta = apb - alpha;
-            pmixed[i] = Rf_pbeta(Fobs, alpha, beta, 0, 0);
-        } else {
-            pmixed[i] = NA_REAL;
+        st_resolve_set(index, i, G, rows);
+        const int m = static_cast<int>(rows.size());
+        NGenes[i] = m;
+
+        // limma::.fryEffects computes t.stat and PValue for EVERY set,
+        // including a single-gene one -- MeanEffectsSet is just that gene's
+        // own effects row. The "NGenes > 1" guard in .fryEffects applies only
+        // to the PValue.Mixed column, which this engine does not return
+        // (REBUILD_SPEC section 4's contract is set/NGenes/Direction/PValue).
+        // Empty sets are excluded upstream by dsea(), so m == 0 cannot occur
+        // here; guard it anyway rather than divide by zero.
+        if (m < 1) {
+            tstat[i] = NA_REAL;
+            PValue[i] = NA_REAL;
+            continue;
         }
+
+        std::vector<double> M(nres + 1, 0.0);
+        for (int j = 0; j < m; ++j) {
+            const int gi = rows[j];
+            const double iw = has_gw ? GW[gi] : 1.0;
+            for (int k = 0; k <= nres; ++k)
+                M[k] += iw * Eff(gi, k);
+        }
+        for (int k = 0; k <= nres; ++k)
+            M[k] /= m;
+
+        // limma: t <- M[1] / sqrt(mean(M[-1]^2)); p <- 2 * pt(-|t|, df = dfr)
+        double rss = 0.0;
+        for (int k = 1; k <= nres; ++k)
+            rss += M[k] * M[k];
+        tstat[i] = M[0] / std::sqrt(rss / nres);
+        PValue[i] = 2.0 * R::pt(-std::fabs(tstat[i]), static_cast<double>(dfr), 1, 0);
     }
-    return Rcpp::List::create(
-        Rcpp::Named("t.stat") = tstat,
-        Rcpp::Named("ngenes") = ngenes,
-        Rcpp::Named("pvalue.mixed") = pmixed,
-        Rcpp::Named("df.residual") = dfr);
+
+    // index.names() is NULL when the caller passes an unnamed gene-set list.
+    // Assigning that straight into a CharacterVector raises "Not compatible
+    // with STRSXP: [type=NULL]" and crashes the process; limma tolerates an
+// unnamed list, so guard the conversion and simply omit the names.
+    Rcpp::CharacterVector set_names;
+    Rcpp::RObject nm_attr = index.attr("names");
+    if (!Rf_isNull(nm_attr))
+        set_names = Rcpp::CharacterVector(nm_attr);
+    if (set_names.size() == nsets) {
+        NGenes.attr("names") = set_names;
+        tstat.attr("names") = set_names;
+        PValue.attr("names") = set_names;
+    }
+
+    return Rcpp::List::create(Rcpp::Named("NGenes") = NGenes,
+                              Rcpp::Named("t") = tstat,
+                              Rcpp::Named("PValue") = PValue);
+}
+
+//' Rotation gene-set test (roast)
+//'
+//' Native counterpart of \code{limma::mroast}: the set's t-statistics are
+//' compared against a null built by rotating the residual coordinates, so no
+//' permutation of sample labels is required and the design structure is kept.
+//'
+//' The normal draws are consumed in exactly the order limma uses
+//' (\code{matrix(rnorm(nroti * neffects), nroti, neffects)}), so calling this
+//' immediately after \code{set.seed()} reproduces \code{limma::mroast}
+//' bit-for-bit.  Do not introduce an extra \code{set.seed()} here.
+//'
+//' @param E G x n matrix of log-expression values.
+//' @param weights optional G x n matrix of positive precision weights.
+//' @param design n x p design matrix.
+//' @param contrast_idx 1-based index of the contrast column of \code{design}.
+//' @param index list of integer gene-set memberships (1-based row numbers).
+//' @param set_statistic one of \code{"mean"}, \code{"floormean"},
+//'   \code{"mean50"}, \code{"msq"}.
+//' @param gene_weights optional numeric vector of length G.
+//' @param nrot number of rotations.
+//' @return a list with \code{NGenes}, \code{Active} (a 4-column matrix of
+//'   active proportions), \code{PV} (a 4-column matrix of p-values for
+//'   down / up / upordown / mixed) plus \code{var.prior} and \code{df.prior}.
+//' @noRd
+// [[Rcpp::export]]
+Rcpp::List st_roast_cpp(Rcpp::NumericMatrix E,
+                        Rcpp::Nullable<Rcpp::NumericMatrix> weights,
+                        Rcpp::NumericMatrix design, int contrast_idx,
+                        Rcpp::List index, std::string set_statistic,
+                        Rcpp::Nullable<Rcpp::NumericVector> gene_weights,
+                        int nrot) {
+    st_check_common(E, design, contrast_idx, index);
+    if (nrot < 1)
+        Rcpp::stop("nrot must be positive");
+    if (set_statistic != "mean" && set_statistic != "floormean" &&
+        set_statistic != "mean50" && set_statistic != "msq")
+        Rcpp::stop("set.statistic must be one of mean, floormean, mean50, msq");
+
+    const int G = E.nrow();
+    const int n = E.ncol();
+    const int p = design.ncol();
+    const int dfr = n - p;
+    const int nres = dfr;
+    const int neff = nres + 1;
+
+    Rcpp::NumericMatrix Eff = st_effects_cpp(E, weights, design, contrast_idx);
+
+    // limma::mroast: s2 <- rowMeans(Effects[, -1]^2); sv <- squeezeVar(s2, dfr)
+    std::vector<double> s2(G);
+    for (int g = 0; g < G; ++g) {
+        double s = 0.0;
+        for (int k = 1; k <= nres; ++k)
+            s += Eff(g, k) * Eff(g, k);
+        s2[g] = s / nres;
+    }
+    double var_prior = NA_REAL, df_prior = NA_REAL;
+    st_fit_fdist(s2, static_cast<double>(dfr), var_prior, df_prior);
+
+    std::vector<double> var_post(G);
+    if (R_FINITE(df_prior)) {
+        for (int g = 0; g < G; ++g)
+            var_post[g] = (dfr * s2[g] + df_prior * var_prior) / (dfr + df_prior);
+    } else {
+        for (int g = 0; g < G; ++g)
+            var_post[g] = var_prior;
+    }
+    const double df_total = df_prior + static_cast<double>(dfr);
+
+    const bool has_gw = gene_weights.isNotNull();
+    std::vector<double> GW;
+    if (has_gw) {
+        Rcpp::NumericVector gw(gene_weights);
+        if (gw.size() != G)
+            Rcpp::stop("gene.weights vector should be of length nrow(y)");
+        GW.assign(gw.begin(), gw.end());
+    }
+
+    const int nsets = index.size();
+    Rcpp::NumericMatrix PV(nsets, 4), ACT(nsets, 4);
+    Rcpp::NumericVector NGenes(nsets);
+    Rcpp::CharacterVector pv_names = Rcpp::CharacterVector::create("Down", "Up", "UpOrDown", "Mixed");
+    Rcpp::colnames(PV) = pv_names;
+    Rcpp::colnames(ACT) = pv_names;
+
+    const double chimed = R::qnorm(0.25, 0.0, 1.0, 0, 0);  // upper quartile of N(0,1)
+    std::vector<int> rows;
+    std::vector<double> modt, mtr, zt, buf;
+
+    for (int si = 0; si < nsets; ++si) {
+        st_resolve_set(index, si, G, rows);
+        const int m = static_cast<int>(rows.size());
+        NGenes[si] = m;
+
+        // ---- observed statistics -------------------------------------------
+        // limma: modt <- effects[, 1]/sqrt(var.post); zscoreT(..., "bailey")
+        const double df_tw = std::min(df_total, 10000.0);
+        modt.assign(m, 0.0);
+        for (int j = 0; j < m; ++j)
+            modt[j] = st_zscore_t_bailey(Eff(rows[j], 0) / std::sqrt(var_post[rows[j]]), df_tw);
+
+        double a1, a2;
+        if (!has_gw) {
+            int c1 = 0, c2 = 0;
+            for (int j = 0; j < m; ++j) {
+                if (modt[j] > M_SQRT2)
+                    ++c1;
+                if (modt[j] < -M_SQRT2)
+                    ++c2;
+            }
+            a1 = static_cast<double>(c1) / m;
+            a2 = static_cast<double>(c2) / m;
+        } else {
+            // limma: s <- sign(gene.weights); ss <- sum(abs(s))
+            //        a1 <- sum(s * modt > sqrt(2))/ss
+            double ss = 0.0;
+            for (int j = 0; j < m; ++j)
+                ss += std::fabs((GW[rows[j]] > 0.0) - (GW[rows[j]] < 0.0));
+            double n1 = 0.0, n2 = 0.0;
+            for (int j = 0; j < m; ++j) {
+                const double sg = (GW[rows[j]] > 0.0) - (GW[rows[j]] < 0.0);
+                if (sg * modt[j] > M_SQRT2)
+                    n1 += 1.0;
+                if (sg * modt[j] < -M_SQRT2)
+                    n2 += 1.0;
+            }
+            a1 = ss > 0.0 ? n1 / ss : NA_REAL;
+            a2 = ss > 0.0 ? n2 / ss : NA_REAL;
+        }
+
+        int half1, half2;
+        if (m % 2 == 0) {
+            half1 = m / 2;
+            half2 = half1 + 1;
+        } else {
+            half1 = half2 = m / 2 + 1;
+        }
+
+        std::vector<double> statobs(4, 0.0);  // down, up, upordown, mixed
+        {
+            // gene weights multiply modt for mean / mean50 and abs() versions
+            // for floormean / msq, exactly as .roastEffects does.
+            std::vector<double> wm(modt);
+            if (has_gw)
+                for (int j = 0; j < m; ++j)
+                    wm[j] = GW[rows[j]] * modt[j];
+
+            if (set_statistic == "mean") {
+                double mn = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    mn += wm[j];
+                    s += std::fabs(wm[j]);
+                }
+                statobs[0] = -mn / m;
+                statobs[1] = mn / m;
+                statobs[3] = s / m;
+            } else if (set_statistic == "floormean") {
+                double d = 0.0, u = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    const double a = std::max(std::fabs(modt[j]), chimed);
+                    const double av = has_gw ? GW[rows[j]] * a : a;
+                    s += av;
+                    d += std::max(-wm[j], 0.0);
+                    u += std::max(wm[j], 0.0);
+                }
+                statobs[0] = d / m;
+                statobs[1] = u / m;
+                statobs[2] = std::max(statobs[0], statobs[1]);
+                statobs[3] = s / m;
+            } else if (set_statistic == "mean50") {
+                buf = wm;
+                std::sort(buf.begin(), buf.end());
+                double d = 0.0, u = 0.0;
+                for (int j = 0; j < half1; ++j)
+                    d += buf[j];
+                for (int j = half2 - 1; j < m; ++j)
+                    u += buf[j];
+                statobs[0] = -d / half1;
+                statobs[1] = u / (m - half2 + 1);
+                statobs[2] = std::max(statobs[0], statobs[1]);
+                buf.assign(m, 0.0);
+                for (int j = 0; j < m; ++j)
+                    buf[j] = std::fabs(wm[j]);
+                std::sort(buf.begin(), buf.end());
+                double s = 0.0;
+                for (int j = half2 - 1; j < m; ++j)
+                    s += buf[j];
+                statobs[3] = s / (m - half2 + 1);
+            } else {  // msq
+                // limma: modt2 <- modt^2
+                //        if (gw) { modt2 <- abs(gw) * modt2; modt <- gw * modt }
+                //        statobs["down"] <- sum(modt2[modt < 0])/nset  (signed modt!)
+                double d = 0.0, u = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    double vv = modt[j] * modt[j];
+                    if (has_gw)
+                        vv *= std::fabs(GW[rows[j]]);
+                    s += vv;
+                    if (wm[j] < 0.0)
+                        d += vv;
+                    if (wm[j] > 0.0)
+                        u += vv;
+                }
+                statobs[0] = d / m;
+                statobs[1] = u / m;
+                statobs[2] = std::max(statobs[0], statobs[1]);
+                statobs[3] = s / m;
+            }
+        }
+
+        // ---- rotations ------------------------------------------------------
+        // limma draws the whole block at once:
+        //     modtr <- matrix(rnorm(nroti * neffects), nroti, neffects)
+        //     modtr <- modtr / sqrt(rowSums(modtr^2))
+        // R's matrix() fills COLUMN-MAJOR, so draw number d (1-based) lands at
+        // rotation ((d-1) %% nroti) + 1 and effect coordinate ((d-1) %/% nroti) + 1.
+        // Drawing neffects values per rotation instead (row-major) permutes the
+        // stream and moves roast's p-values by several counts out of nrot, which
+        // is exactly the bit-exactness this method is required to preserve.
+        std::vector<int> count(4, 0);
+        std::vector<double> z(neff), mt(m), rsq(m), s2r(m);
+        mtr.assign(m, 0.0);
+        zt.assign(m, 0.0);
+
+        std::vector<double> block(static_cast<std::size_t>(nrot) * neff);
+        for (std::size_t d = 0; d < block.size(); ++d)
+            block[d] = R::rnorm(0.0, 1.0);
+
+        for (int r = 0; r < nrot; ++r) {
+            double nz = 0.0;
+            for (int k = 0; k < neff; ++k) {
+                // column-major lookup: row r, column k
+                z[k] = block[static_cast<std::size_t>(k) * nrot + r];
+                nz += z[k] * z[k];
+            }
+            nz = std::sqrt(nz);
+            for (int k = 0; k < neff; ++k)
+                z[k] /= nz;
+
+            // modtr <- tcrossprod(effects, modtr) -- the set's row of the
+            // rotated effects.
+            for (int j = 0; j < m; ++j) {
+                double s = 0.0, rs = 0.0;
+                for (int k = 0; k < neff; ++k) {
+                    const double v = Eff(rows[j], k);
+                    s += v * z[k];
+                    rs += v * v;
+                }
+                mt[j] = s;
+                rsq[j] = rs;
+            }
+
+            // limma: s2r <- (rowSums(effects^2) - modtr^2)/df.residual
+            //        s2r <- (df.prior*var.prior + df.residual*s2r)/df.total
+            for (int j = 0; j < m; ++j) {
+                const double raw = (rsq[j] - mt[j] * mt[j]) / dfr;
+                s2r[j] = R_FINITE(df_prior)
+                             ? (df_prior * var_prior + dfr * raw) / df_total
+                             : var_prior;
+            }
+            for (int j = 0; j < m; ++j)
+                mtr[j] = mt[j] / std::sqrt(s2r[j]);
+            for (int j = 0; j < m; ++j)
+                zt[j] = st_zscore_t_bailey(mtr[j], df_tw);
+
+            std::vector<double> wr(zt);
+            if (has_gw)
+                for (int j = 0; j < m; ++j)
+                    wr[j] = GW[rows[j]] * zt[j];
+
+            double sd_ = 0.0, su_ = 0.0, smix = 0.0, sup = 0.0;
+            if (set_statistic == "mean") {
+                double mn = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    mn += wr[j];
+                    s += std::fabs(wr[j]);
+                }
+                sd_ = -mn / m;
+                su_ = mn / m;
+                smix = s / m;
+            } else if (set_statistic == "floormean") {
+                double d = 0.0, u = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    const double a = std::max(std::fabs(zt[j]), chimed);
+                    const double av = has_gw ? GW[rows[j]] * a : a;
+                    s += av;
+                    d += std::max(-wr[j], 0.0);
+                    u += std::max(wr[j], 0.0);
+                }
+                sd_ = d / m;
+                su_ = u / m;
+                smix = s / m;
+            } else if (set_statistic == "mean50") {
+                buf = wr;
+                std::sort(buf.begin(), buf.end());
+                double d = 0.0, u = 0.0;
+                for (int j = 0; j < half1; ++j)
+                    d += buf[j];
+                for (int j = half2 - 1; j < m; ++j)
+                    u += buf[j];
+                sd_ = -d / half1;
+                su_ = u / (m - half2 + 1);
+                std::vector<double> av(m);
+                for (int j = 0; j < m; ++j)
+                    av[j] = std::fabs(wr[j]);
+                std::sort(av.begin(), av.end());
+                double s = 0.0;
+                for (int j = half2 - 1; j < m; ++j)
+                    s += av[j];
+                smix = s / (m - half2 + 1);
+            } else {  // msq
+                // limma rotation branch: gw <- sqrt(abs(gw)); modtr <- gw * modtr
+                // then statrot[,"down"] <- colMeans(pmax(-modtr,0)^2) etc.
+                // The squared statistic therefore carries |gw| exactly once,
+                // and the down/up split uses the SIGN OF THE SCALED modtr.
+                double d = 0.0, u = 0.0, s = 0.0;
+                for (int j = 0; j < m; ++j) {
+                    double scaled = zt[j];
+                    if (has_gw)
+                        scaled *= std::sqrt(std::fabs(GW[rows[j]]));
+                    d += scaled < 0.0 ? scaled * scaled : 0.0;
+                    u += scaled > 0.0 ? scaled * scaled : 0.0;
+                    s += scaled * scaled;
+                }
+                sd_ = d / m;
+                su_ = u / m;
+                smix = s / m;
+            }
+            sup = std::max(sd_, su_);
+
+            // limma counts every rotation statistic against BOTH the down and
+            // the up observed statistic: sum(statrot[, c("down","up")] > obs)
+            if (sd_ > statobs[0])
+                ++count[0];
+            if (su_ > statobs[0])
+                ++count[0];
+            if (sd_ > statobs[1])
+                ++count[1];
+            if (su_ > statobs[1])
+                ++count[1];
+            // For "mean" the upordown count is NOT accumulated here; limma
+            // assigns it min(count[down], count[up]) after the loop.
+            if (set_statistic != "mean" && sup > statobs[2])
+                ++count[2];
+            if (smix > statobs[3])
+                ++count[3];
+        }
+
+        if (set_statistic == "mean")
+            count[2] = std::min(count[0], count[1]);
+
+        PV(si, 0) = (count[0] + 1.0) / (2.0 * nrot + 1.0);
+        PV(si, 1) = (count[1] + 1.0) / (2.0 * nrot + 1.0);
+        PV(si, 2) = (count[2] + 1.0) / (1.0 * nrot + 1.0);
+        PV(si, 3) = (count[3] + 1.0) / (1.0 * nrot + 1.0);
+
+        ACT(si, 0) = a2;  // Active.Prop "Down"
+        ACT(si, 1) = a1;  // Active.Prop "Up"
+        ACT(si, 2) = std::max(a1, a2);
+        ACT(si, 3) = a1 + a2;
+    }
+
+    // index.names() is NULL when the caller passes an unnamed gene-set list.
+    // Assigning that straight into a CharacterVector raises "Not compatible
+    // with STRSXP: [type=NULL]" and crashes the process; limma tolerates an
+// unnamed list, so guard the conversion and simply omit the names.
+    Rcpp::CharacterVector set_names;
+    Rcpp::RObject nm_attr = index.attr("names");
+    if (!Rf_isNull(nm_attr))
+        set_names = Rcpp::CharacterVector(nm_attr);
+    if (set_names.size() == nsets) {
+        Rcpp::rownames(PV) = set_names;
+        Rcpp::rownames(ACT) = set_names;
+        NGenes.attr("names") = set_names;
+    }
+
+    return Rcpp::List::create(Rcpp::Named("NGenes") = NGenes,
+                              Rcpp::Named("Active") = ACT,
+                              Rcpp::Named("PV") = PV,
+                              Rcpp::Named("var.prior") = var_prior,
+                              Rcpp::Named("df.prior") = df_prior);
 }

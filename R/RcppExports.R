@@ -38,47 +38,118 @@ rwr_eigen_cpp <- function(A, v, restart, threshold, max_iter) {
     .Call(`_enrichit_rwr_eigen_cpp`, A, v, restart, threshold, max_iter)
 }
 
-#' Effects matrix from .lmEffects (contrast coordinate + residual coordinates)
+#' Moderated variance estimation (limma-compatible)
 #'
-#' @keywords internal
+#' Internal counterpart of \code{limma::squeezeVar(var, df)}: an empirical
+#' Bayes moderation that borrows strength across genes via
+#' \code{fitFDist} + \code{.squeezeVar}.
+#'
+#' @param var numeric vector of per-gene sample variances.
+#' @param df residual degrees of freedom (length 1 or \code{length(var)}).
+#' @return a list with \code{var.post}, \code{var.prior} and \code{df.prior},
+#'   matching the return value of \code{limma::squeezeVar}.
+#' @noRd
+st_squeeze_var_cpp <- function(var_in, df) {
+    .Call(`_enrichit_st_squeeze_var_cpp`, var_in, df)
+}
+
+#' Linear-model effects: contrast coordinate + residual coordinates
+#'
+#' Shared effects computation for camera / roast / fry.  Returns a
+#' \code{G x (n - p + 1)} matrix whose first column is the contrast
+#' coordinate (signed) and whose remaining \code{n - p} columns are the
+#' residual coordinates of \eqn{Q'y}.
+#'
+#' The QR decomposition is delegated to R's \code{qr()} / \code{qr.qty()} so
+#' that the residual basis is bit-identical to limma's \code{.lmEffects};
+#' see the file header for why that matters.
+#'
+#' @param E G x n matrix of log-expression values (finite, no NA).
+#' @param weights optional G x n matrix of positive precision weights.
+#' @param design n x p design matrix.
+#' @param contrast_idx 1-based index of the contrast column of \code{design}.
+#' @return G x (n - p + 1) numeric matrix.
+#' @noRd
 st_effects_cpp <- function(E, weights, design, contrast_idx) {
     .Call(`_enrichit_st_effects_cpp`, E, weights, design, contrast_idx)
 }
 
-#' limma-style squeezeVar for scalar residual df (fitFDist prior)
+#' Competitive gene-set test with correlation adjustment (camera)
 #'
-#' @keywords internal
-st_squeeze_var_cpp <- function(var, df) {
-    .Call(`_enrichit_st_squeeze_var_cpp`, var, df)
-}
-
-#' Native camera: inter-gene-correlation adjusted mean-rank set test
+#' Native counterpart of \code{limma::camera}: a competitive test of whether a
+#' set's genes are differentially expressed relative to the rest of the
+#' genome, with the two-sample t-statistic's variance inflated by an
+#' inter-gene correlation.  The correlation is either supplied by the caller
+#' or estimated from the residual coordinates.
 #'
-#' Mirrors \code{limma::camera} for \code{use.ranks = FALSE}.
-#'
-#' @keywords internal
+#' @param E G x n matrix of log-expression values.
+#' @param weights optional G x n matrix of positive precision weights.
+#' @param design n x p design matrix.
+#' @param contrast_idx 1-based index of the contrast column of \code{design}.
+#' @param index list of integer gene-set memberships (1-based row numbers).
+#' @param inter_gene_cor fixed inter-gene correlation, or \code{NULL} to
+#'   estimate it per set.
+#' @param allow_neg_cor allow estimated negative correlations to be used;
+#'   when \code{FALSE} the variance inflation is floored at 1.
+#' @return a list with \code{NGenes}, \code{Correlation}, \code{Down},
+#'   \code{Up} and \code{TwoSided}; the two-sided p-value is
+#'   \code{2 * min(Down, Up)}.
+#' @noRd
 st_camera_cpp <- function(E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor) {
     .Call(`_enrichit_st_camera_cpp`, E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor)
 }
 
-#' Native roast: rotation gene set test on the effects matrix
+#' Self-contained gene-set test on the linear-model effects (fry)
 #'
-#' Mirrors \code{limma::mroast}/\code{.roastEffects} with scalar
-#' var.prior/df.prior and \code{approx.zscore = TRUE}. Consumes R's
-#' RNG in the same order as limma, so \code{set.seed()} reproduces
-#' limma's rotation draws exactly.
+#' Native counterpart of \code{limma::fry}: a rotation test that needs no
+#' permutations and no correlation assumption, operating on the effects
+#' computed once for all genes.
 #'
-#' @keywords internal
-st_roast_cpp <- function(E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot) {
-    .Call(`_enrichit_st_roast_cpp`, E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot)
-}
-
-#' Native fry: fast rotation-free set test on the effects matrix
+#' The \code{standardize} argument selects limma's estimator for the per-gene
+#' scale: \code{"posterior.sd"} (default), \code{"residual.sd"},
+#' \code{"p2"} or \code{"none"}.
 #'
-#' Mirrors \code{limma::fry} (standardize = "posterior.sd" by default).
-#'
-#' @keywords internal
+#' @param E G x n matrix of log-expression values.
+#' @param weights optional G x n matrix of positive precision weights.
+#' @param design n x p design matrix.
+#' @param contrast_idx 1-based index of the contrast column of \code{design}.
+#' @param index list of integer gene-set memberships (1-based row numbers).
+#' @param gene_weights optional numeric vector of length G.
+#' @param standardize one of \code{"posterior.sd"}, \code{"residual.sd"},
+#'   \code{"p2"}, \code{"none"}.
+#' @return a list with \code{NGenes}, \code{t} and \code{PValue}.  Sets with
+#'   single-gene sets get a real p-value, exactly as limma does: only
+#'   limma's \code{PValue.Mixed} column is gated on \code{NGenes > 1}.
+#' @noRd
 st_fry_cpp <- function(E, weights, design, contrast_idx, index, gene_weights, standardize) {
     .Call(`_enrichit_st_fry_cpp`, E, weights, design, contrast_idx, index, gene_weights, standardize)
+}
+
+#' Rotation gene-set test (roast)
+#'
+#' Native counterpart of \code{limma::mroast}: the set's t-statistics are
+#' compared against a null built by rotating the residual coordinates, so no
+#' permutation of sample labels is required and the design structure is kept.
+#'
+#' The normal draws are consumed in exactly the order limma uses
+#' (\code{matrix(rnorm(nroti * neffects), nroti, neffects)}), so calling this
+#' immediately after \code{set.seed()} reproduces \code{limma::mroast}
+#' bit-for-bit.  Do not introduce an extra \code{set.seed()} here.
+#'
+#' @param E G x n matrix of log-expression values.
+#' @param weights optional G x n matrix of positive precision weights.
+#' @param design n x p design matrix.
+#' @param contrast_idx 1-based index of the contrast column of \code{design}.
+#' @param index list of integer gene-set memberships (1-based row numbers).
+#' @param set_statistic one of \code{"mean"}, \code{"floormean"},
+#'   \code{"mean50"}, \code{"msq"}.
+#' @param gene_weights optional numeric vector of length G.
+#' @param nrot number of rotations.
+#' @return a list with \code{NGenes}, \code{Active} (a 4-column matrix of
+#'   active proportions), \code{PV} (a 4-column matrix of p-values for
+#'   down / up / upordown / mixed) plus \code{var.prior} and \code{df.prior}.
+#' @noRd
+st_roast_cpp <- function(E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot) {
+    .Call(`_enrichit_st_roast_cpp`, E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot)
 }
 

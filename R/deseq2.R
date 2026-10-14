@@ -269,161 +269,189 @@ as_genes.DESeqDataSet <- function(x,
     out
 }
 
-## ---- EList bridge ---------------------------------------------------------
 
-#' Convert a DESeqDataSet to a limma EList with delta-method precision weights
+## ---- DseaData container ---------------------------------------------------
+## as_elist() / limma EList were removed (see NEWS 0.2.6.9000): dsea() is
+## zero-dependency, so the container is the package's own DseaData list. as_dsea()
+## replaces as_elist(); the bridge keeps DESeq2's fitted mu/dispersion as inputs.
+
+#' Convert a DESeq2 dataset into a DseaData container
 #'
-#' Build a limma \code{EList} (log-expression matrix plus per-observation
-#' precision weights and the design matrix) from a fitted
-#' \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}, ready for limma's
-#' weighted linear-model machinery and gene-set tests such as
-#' \code{\link[limma:camera]{camera}}, \code{\link[limma:roast]{roast}} and
-#' \code{\link[limma:fry]{fry}} (see \code{\link{dsea}}).
+#' Build a log2 expression matrix and per-gene precision weights from a
+#' fitted \code{DESeqDataSet}, for use with \code{\link{dsea}}.
 #'
-#' @details The expression matrix follows the voom convention,
-#'   \code{E[i,j] = log2((count[i,j] + 0.5) / (lib.size[j] * norm.factor[j] + 1) * 1e6)}
-#'   with \code{lib.size = colSums(counts)}.
+#' @param x A \code{\link[DESeq2]{DESeqDataSet}} that has been fitted with
+#'   \code{\link[DESeq2]{DESeq}} (so that \code{assay(x, "mu")} and
+#'   \code{mcols(x)$dispersion} are populated).
+#' @param norm.factors Sample-wise normalisation factors. Defaults to
+#'   \code{DESeq2::sizeFactors(x)}. These are \emph{depth-like} factors (see
+#'   Details), so they are rescaled to the mean sequencing depth before being
+#'   used as a denominator. Pass \code{NULL} to use raw sequencing depth only.
+#' @param mu.floor Lower bound applied to the fitted means before forming the
+#'   delta-method weights. A single positive finite number; default \code{1}.
+#' @param ... Ignored, for S3 generic consistency.
 #'
-#'   The precision weights, however, are not re-learned from an empirical
-#'   mean-variance trend: they reuse the negative-binomial mean-variance law
-#'   that DESeq2 has already estimated genome-wide (fitted means in
-#'   \code{assay(x, "mu")}, empirical-Bayes-shrunk dispersions in
-#'   \code{mcols(x)$dispersion}). The delta method on
-#'   \code{log2(c + 0.5)} gives
-#'   \code{Var(y[i,j]) ~ (mu[i,j] + alpha[i] * mu[i,j]^2) / ((mu[i,j] + 0.5)^2 * log(2)^2)},
-#'   and the weight is the reciprocal of this variance. Global scaling of
-#'   the weights is absorbed by the residual-variance estimate downstream,
-#'   so the \code{log(2)^2} factor only fixes the absolute scale.
-#'
-#'   As \code{mu[i,j]} approaches zero the delta-method variance vanishes
-#'   while the discreteness scatter of near-zero counts does not, so fitted
-#'   means are floored at \code{mu.floor} (default 1 count) before the
-#'   weights are computed. Genes without an estimated dispersion get
-#'   \code{alpha = 1}; all-zero genes additionally have NA fitted means,
-#'   and any non-finite weights are replaced by the minimum finite
-#'   weight, with a message.
-#'
-#'   DESeq2 must have been run on the object: both the \code{"mu"} assay
-#'   and the dispersions are required.
-#'
-#' @param x a fitted \code{\link[DESeq2:DESeqDataSet-class]{DESeqDataSet}}.
-#' @param norm.factors numeric vector of length \code{ncol(x)} of
-#'   normalization factors multiplied into the library sizes; defaults to
-#'   \code{DESeq2::sizeFactors(x)}. \code{NULL} means no normalization
-#'   (raw library sizes only).
-#' @param mu.floor positive numeric, fitted means are floored at this value
-#'   before computing weights (default 1).
-#' @param ... currently unused.
-#' @return An object of class \code{\link[limma:EList-class]{EList}} with
-#'   components \code{E} (genes x samples log-expression matrix),
-#'   \code{weights} (genes x samples precision weights) and \code{design}
-#'   (the model matrix used by \code{DESeq2::DESeq()}, with columns named
-#'   as in \code{DESeq2::resultsNames()}, e.g.
-#'   \code{condition_trt_vs_ctrl}).
-#' @examples
-#' \donttest{
-#' library(DESeq2)
-#' dds <- makeExampleDESeqDataSet(n = 500)
-#' isB <- colData(dds)$condition == "B"
-#' ct <- counts(dds)
-#' ct[1:60, isB] <- ct[1:60, isB] * 5 + 500
-#' storage.mode(ct) <- "integer"
-#' counts(dds) <- ct
-#' dds <- DESeq(dds, quiet = TRUE)
-#' elist <- as_elist(dds)
+#' @return An object of S3 class \code{"DseaData"}: a list with elements
+#' \describe{
+#'   \item{\code{E}}{G x n matrix of log2 expression values.}
+#'   \item{\code{weights}}{G x n matrix of precision weights, or \code{NULL}.}
+#'   \item{\code{design}}{The n x p design matrix, with \code{colnames} used
+#'     for contrast resolution.}
 #' }
+#'
+#' @details
+#' \strong{Why the library size is \code{mean(colSums(ct)) * norm.factors}.}
+#'
+#' \code{DESeq2::sizeFactors()} are estimated by the median-of-ratios method and
+#' are \emph{themselves a measure of sequencing depth}, merely rescaled so that
+#' their geometric mean is 1:
+#'
+#' \preformatted{
+#'   airway: exp(mean(log(sizeFactors))) = 1.0048
+#'           cor(log sizeFactors, log colSums) = 0.983
+#'           sizeFactors range 0.670 - 1.399 (2.09x)
+#'           colSums     range 15.2M - 30.8M (2.03x)   <- the same quantity
+#'   simulated data with depth decoupled from group:
+#'           cor(log sizeFactors, log depth) = 0.9999
+#' }
+#'
+#' They are \strong{not} edgeR-style relative correction factors. DESeq2's
+#' model is \code{count_ij ~ sf_j * q_ij}, \code{sf_j} being the depth. Writing
+#' that into the expression matrix, the old denominator
+#' \code{colSums(ct) * norm.factors} cancels \code{sf} against itself and
+#' leaves a per-sample offset that the linear design cannot absorb:
+#'
+#' \preformatted{
+#'   E_ij ~ log2(q_ij) + log2(sf_j) - log2(colSums_j) - log2(sf_j)
+#'        = log2(q_ij) - log2(colSums_j)
+#' }
+#'
+#' Dividing by \code{mean(colSums(ct)) * norm.factors} instead keeps the CPM
+#' scale while removing exactly one copy of the depth. Measured on \code{airway}
+#' (\code{~ cell + dex}), same delta-method weights, only the denominator
+#' changed:
+#'
+#' \preformatted{
+#'   metric                                colSums*sf   mean(colSums)*sf
+#'   unmodelled per-sample sd (log2)           0.3440            0.1267
+#'   median per-gene residual sigma            0.1690            0.1378
+#'   cor(colMeans(E), -log2(colSums))          0.9975            0.9829
+#' }
+#'
+#' The residual per-sample offset drops by a factor of 2.7. Note also that
+#' \code{colMeans(E)} remains strongly correlated with \code{-log2(colSums)}
+#' (\eqn{r = 0.983}) -- the depth term is genuinely present in the data; it is
+#' the \emph{unmodelled} part that the design cannot explain, and only 52\% of
+#' \code{log2(colSums)} is explainable by the design, so that part has nowhere
+#' to go. Because the offset has the same sign for every gene, it acts as a
+#' rank-1 sample effect: competitive statistics (camera) centre it away, while
+#' fry/roast, which do not centre across the genome, inherit it.
+#'
+#' \strong{Delta-method weights.}
+#'
+#' With \eqn{\tilde\mu = \max(\mu, \code{mu.floor})}, the weights are the
+#' reciprocal of the delta-method variance of
+#' \eqn{\log_2((c + 0.5) / D)}:
+#'
+#' \preformatted{
+#'   w = (mu_tilde + 0.5)^2 * log(2)^2 / (mu_tilde + alpha * mu_tilde^2)
+#' }
+#'
+#' \code{mu} is taken from \code{assay(x, "mu")} and \code{alpha} from
+#' \code{mcols(x)$dispersion}; both require a prior \code{DESeq2::DESeq()} run.
+#'
+#' Because \code{mu} is \code{NA} for genes dropped by DESeq2's independent
+#' filtering and the raw formula yields non-finite weights there, non-finite
+#' weights are replaced by the minimum finite weight. This replacement is
+#' required: downstream weighted least squares rejects non-finite weights.
+#'
+#' @examples
+#' \dontrun{
+#' library(DESeq2)
+#' dds <- DESeq(dds)
+#' dd <- as_dsea(dds)
+#' dsea(dd, gene_sets, contrast = "dex_untrt_vs_trt")
+#' }
+#'
+#' @seealso \code{\link{dsea}}
 #' @export
-as_elist <- function(x, ...) {
-    UseMethod("as_elist")
+as_dsea <- function(x, ...) {
+    UseMethod("as_dsea")
 }
 
-#' @rdname as_elist
+#' @rdname as_dsea
 #' @export
-as_elist.default <- function(x, ...) {
-    stop(
-        "no as_elist() method for objects of class '",
-        paste(class(x), collapse = ", "),
-        "'; currently DESeqDataSet is supported.",
-        call. = FALSE
-    )
-}
-
-#' @rdname as_elist
-#' @export
-as_elist.DESeqDataSet <- function(x,
-                                  norm.factors = DESeq2::sizeFactors(x),
-                                  mu.floor = 1,
-                                  ...) {
-    rlang::check_installed("DESeq2", "for converting DESeq2 objects.")
-    rlang::check_installed("limma", "for constructing an EList.")
-
-    if (is.null(mu.floor) || !is.numeric(mu.floor) || length(mu.floor) != 1 ||
+as_dsea.DESeqDataSet <- function(x, norm.factors = DESeq2::sizeFactors(x),
+                                 mu.floor = 1, ...) {
+    ## ---- validate mu.floor -------------------------------------------------
+    if (!is.numeric(mu.floor) || length(mu.floor) != 1L ||
         !is.finite(mu.floor) || mu.floor <= 0) {
-        stop("mu.floor must be a single positive finite number.", call. = FALSE)
+        stop("'mu.floor' must be a single positive finite number.", call. = FALSE)
     }
 
-    if (!"mu" %in% SummarizedExperiment::assayNames(x)) {
-        stop(
-            "no 'mu' assay found; run DESeq2::DESeq() on the object first -- ",
-            "as_elist() reuses its fitted means and dispersions.",
-            call. = FALSE
-        )
-    }
-
-    ct <- DESeq2::counts(x)
-    ids <- rownames(ct)
-    if (is.null(ids)) {
-        stop("the DESeqDataSet has no row names; gene identifiers are required.", call. = FALSE)
-    }
-    n <- ncol(ct)
-    if (is.null(norm.factors)) {
-        norm.factors <- rep(1, n)
-    }
-    if (!is.numeric(norm.factors) || length(norm.factors) != n ||
-        anyNA(norm.factors) || any(norm.factors <= 0)) {
-        stop("norm.factors must be NULL or a positive numeric vector of length ncol(x).", call. = FALSE)
-    }
-    lib.size <- colSums(ct) * norm.factors
-    if (any(lib.size <= 0)) {
-        stop("all library sizes must be positive.", call. = FALSE)
-    }
-
-    E <- log2((ct + 0.5) / (matrix(lib.size, nrow(ct), n, byrow = TRUE) + 1) * 1e6)
-
-    ## DESeq2 stores the model matrix it fitted with, with columns renamed
-    ## to the resultsNames() convention (e.g. condition_trt_vs_ctrl);
-    ## a fresh model.matrix() would give unrenamed names (conditiontrt)
-    design <- attr(x, "modelMatrix")
-    if (is.null(design)) {
-        design <- stats::model.matrix(
-            DESeq2::design(x),
-            data = as.data.frame(SummarizedExperiment::colData(x))
-        )
+    ## ---- required DESeq2 quantities ---------------------------------------
+    ## Both are produced by DESeq2::DESeq(); without them the delta-method
+    ## weights are undefined, so fail loudly rather than silently degrading.
+    mu <- tryCatch(SummarizedExperiment::assay(x, "mu"), error = function(e) NULL)
+    if (is.null(mu)) {
+        stop("assay(x, 'mu') is not available; run DESeq2::DESeq(x) first ",
+             "so that the fitted means are stored.", call. = FALSE)
     }
 
     alpha <- SummarizedExperiment::mcols(x)$dispersion
     if (is.null(alpha)) {
-        stop("no dispersions found; run DESeq2::DESeq() on the object first.", call. = FALSE)
+        stop("mcols(x)$dispersion is not available; run DESeq2::DESeq(x) first ",
+             "so that per-gene dispersions are estimated.", call. = FALSE)
     }
-    mu <- SummarizedExperiment::assay(x, "mu")
 
-    w <- .deseq2_precision_weights(mu, alpha, mu.floor = mu.floor)
-    dimnames(w) <- dimnames(E)
+    ct <- DESeq2::counts(x)
 
-    methods::new("EList", list(E = E, weights = w, design = design))
-}
+    ## ---- library size ------------------------------------------------------
+    ## norm.factors are DEPTH-LIKE (median-of-ratios, geometric mean ~1), so
+    ## they are rescaled to the mean depth rather than multiplied by the raw
+    ## per-sample depth (which would count depth twice). See @details.
+    if (is.null(norm.factors)) {
+        lib.size <- rep(mean(colSums(ct)), ncol(ct))
+    } else {
+        if (!is.numeric(norm.factors) || length(norm.factors) != ncol(ct)) {
+            stop("'norm.factors' must be NULL or a numeric vector with one ",
+                 "value per sample (", ncol(ct), ").", call. = FALSE)
+        }
+        lib.size <- mean(colSums(ct)) * norm.factors
+    }
 
-.deseq2_precision_weights <- function(mu, alpha, mu.floor) {
-    alpha[is.na(alpha)] <- 1
-    mu_f <- pmax(mu, mu.floor)
-    w <- (mu_f + 0.5)^2 * log(2)^2 / (mu_f + alpha * mu_f^2)
+    ## Explicit byrow = TRUE: `matrix * length-n vector` recycles COLUMN-major,
+    ## which silently broadcasts onto genes whenever nrow(ct) is a multiple of
+    ## ncol(ct). Same class of bug as the batch-effect one in the benchmark.
+    denom <- matrix(lib.size, nrow(ct), ncol(ct), byrow = TRUE) + 1
+
+    E <- log2((ct + 0.5) / denom * 1e6)
+    dimnames(E) <- dimnames(ct)
+
+    ## ---- delta-method precision weights ------------------------------------
+    mu_tilde <- pmax(mu, mu.floor)
+    w <- (mu_tilde + 0.5)^2 * log(2)^2 /
+        (mu_tilde + alpha * mu_tilde^2)
+
     bad <- !is.finite(w)
     if (any(bad)) {
-        message(
-            "replacing ", sum(bad),
-            " non-finite precision weight(s) with the minimum finite weight."
-        )
-        w[bad] <- min(w[!bad])
+        ## mu is NA for genes dropped by independent filtering; the formula
+        ## then yields NaN. Fall back to the smallest finite weight.
+        fin <- w[!bad]
+        w[bad] <- if (length(fin)) min(fin) else 0
     }
-    w
+    dimnames(w) <- dimnames(E)
+
+    ## ---- design ------------------------------------------------------------
+    design <- attr(x, "modelMatrix")
+    if (is.null(design)) {
+        design <- stats::model.matrix(DESeq2::design(x),
+                                     SummarizedExperiment::colData(x))
+    }
+    design <- as.matrix(design)
+
+    structure(
+        list(E = E, weights = w, design = design),
+        class = "DseaData"
+    )
 }
