@@ -641,7 +641,16 @@ test_that("the golden reference p-values do not drift", {
         res <- dsea(dds, gene_sets, contrast = contrast, method = m, sort = FALSE)
         expect_identical(res$set, golden$set_names)
         expect_identical(as.integer(res$NGenes), as.integer(golden$n_genes_per_set))
-        expect_equal(res$PValue, golden$pvalue[[m]], tolerance = 0,
+        ## TOLERANCE, not bit-exactness. The golden was recorded on one CPU/BLAS;
+        ## R CMD check runs on ubuntu/macos/windows with different floating-point
+        ## summation order, so the last 1-2 ulps legitimately differ. tolerance = 0
+        ## (testthat's exact comparison) failed CI on exactly this with diffs of
+        ## ~2e-15 that are NOT regressions. 1e-10 is far above hardware noise yet
+        ## still catches any real algorithmic change: the four bugs this golden
+        ## guards against (QR basis sign, depth double-count, Direction inversion,
+        ## fry single-gene NA) all moved p-values by >= 1e-4 or changed a label,
+        ## i.e. >= 6 orders of magnitude beyond this bound.
+        expect_equal(res$PValue, golden$pvalue[[m]], tolerance = 1e-10,
                      info = sprintf("%s p-values drifted from the golden reference", m))
         ## Direction is locked too: a p-value-only golden cannot catch a sign
         ## inversion, because TwoSided (and fry's 2*pt(-|t|)) are sign-blind.
