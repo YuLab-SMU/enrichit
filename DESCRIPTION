@@ -30,7 +30,6 @@ LinkingTo:
     Rcpp, 
     RcppEigen
 Suggests: 
-    airway,
     AnnotationDbi,
     BiasedUrn,
     clusterProfiler,

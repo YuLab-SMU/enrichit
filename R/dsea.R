@@ -372,7 +372,10 @@
 #'   a single character vector (treated as one set). Identifiers are matched
 #'   against \code{rownames(E)}; members that are absent are dropped.
 #' @param contrast Which design-matrix column encodes the comparison. Accepts
-#'   the DESeq2-style contrast name (e.g. \code{"dex_trt_vs_untrt"}), a column
+#'   the DESeq2-style contrast name as reported by \code{DESeq2::resultsNames()}
+#'   (note the reference level goes first: with \code{airway}'s
+#'   \code{levels(dex) = c("trt", "untrt")} the column is
+#'   \code{"dex_untrt_vs_trt"}), a column
 #'   index, or a numeric vector with exactly one non-zero entry. \code{NULL}
 #'   is allowed only when the design has a single non-intercept column.
 #'   Note that the design column names have the sign implicit in the column
@@ -491,25 +494,33 @@
 #' @examples
 #' \donttest{
 #' library(DESeq2)
-#' library(airway)
+#' dds <- makeExampleDESeqDataSet(n = 500)
+#' isB <- colData(dds)$condition == "B"
+#' counts(dds)[1:60, isB] <- as.integer(round(counts(dds)[1:60, isB] * 5 + 500))
+#' dds <- DESeq(dds, quiet = TRUE)
 #'
-#' data(airway)
-#' dds <- DESeqDataSet(airway, design = ~ cell + dex)
-#' dds <- DESeq(dds)
-#'
-#' ## Always ask DESeq2 which contrasts exist rather than assuming a name.
+#' ## Ask DESeq2 which contrasts exist rather than assuming a name. On the
+#' ## airway data (design = ~ cell + dex, levels(dex) = c("trt", "untrt")) the
+#' ## column is "dex_untrt_vs_trt" -- the reference level comes FIRST, so
+#' ## guessing the reverse "dex_trt_vs_untrt" is the most common mistake here.
 #' resultsNames(dds)
-#' ct <- "dex_trt_vs_untrt"
+#' ct <- "condition_B_vs_A"
 #'
+#' ## Gene-set membership is matched against rownames(), so the lists must use
+#' ## the SAME identifier space as the assay: airway's rownames are Ensembl
+#' ## gene IDs, not symbols, and the ID set of an annotation changes between
+#' ## releases. This example therefore derives its sets from rownames(dds);
+#' ## in a real analysis you would pass pathway lists mapped to your annotation.
 #' gene_sets <- list(
-#'     TNFa_Signaling = c("TNFAIP3", "NFKB1", "NFKB2", "REL", "RELA"),
-#'     OXPHOS         = c("NDUFA1", "NDUFB1", "COX5A", "ATP5F1A", "SDHA")
+#'     SPIKED_UP = rownames(dds)[1:60],
+#'     NEUTRAL   = rownames(dds)[301:340]
 #' )
 #'
-#' ## The three methods. Each returns a data.frame of p-values.
+#' ## The three methods. Each returns a data.frame of unadjusted p-values.
 #' cam <- dsea(dds, gene_sets, contrast = ct, method = "camera")
 #' fry <- dsea(dds, gene_sets, contrast = ct, method = "fry")
 #' rst <- dsea(dds, gene_sets, contrast = ct, method = "roast", nrot = 99)
+#' cam
 #'
 #' ## Multiple-testing correction is left to the caller.
 #' cam$FDR <- p.adjust(cam$PValue, method = "BH")
@@ -519,13 +530,13 @@
 #' bare <- dsea(list(E = dd$E, weights = dd$weights, design = dd$design),
 #'              gene_sets, contrast = colnames(dd$design)[ncol(dd$design)],
 #'              method = "fry")
-#' }
 #'
 #' ## Only one engine exists; asking for another one is an error, not a
 #' ## silent fallback.
 #' tryCatch(dsea(list(E = matrix(0, 2, 2), design = matrix(1, 2, 1)),
 #'               list(a = "x"), engine = "other"),
 #'          error = function(e) conditionMessage(e))
+#' }
 #'
 #' @seealso \code{\link{as_dsea}}, \code{\link{gsea}}
 #' @importFrom stats p.adjust

@@ -25,13 +25,28 @@ used as a denominator. Pass \code{NULL} to use raw sequencing depth only.}
 delta-method weights. A single positive finite number; default \code{1}.}
 }
 \value{
-An object of S3 class \code{"DseaData"}: a list with elements
+An object of S3 class \code{"DseaData"}: a list with elements, in
+this fixed order,
 \describe{
 \item{\code{E}}{G x n matrix of log2 expression values.}
 \item{\code{weights}}{G x n matrix of precision weights, or \code{NULL}.}
 \item{\code{design}}{The n x p design matrix, with \code{colnames} used
 for contrast resolution.}
+\item{\code{counts}}{G x n integer matrix of raw counts,
+\code{DESeq2::counts(x)}.}
+\item{\code{mu}}{G x n matrix of fitted means,
+\code{SummarizedExperiment::assay(x, "mu")}, stored \emph{unfloored}
+(the \code{mu.floor} clamp is applied only inside the weight formula,
+never to this field).}
+\item{\code{alpha}}{Length-G numeric vector of EB-shrunk per-gene
+dispersions, \code{mcols(x)$dispersion}, with \code{NA} replaced
+by \code{1}.}
 }
+The last three fields carry the \pkg{DESeq2} fit forward so that an NB
+parametric-bootstrap zero distribution can be generated from the very model
+that produced the observed statistic; \code{dsea()} itself reads only
+\code{E}, \code{weights} and \code{design}, so adding these fields leaves the
+observed-test pipeline bit-for-bit unchanged.
 }
 \description{
 Build a log2 expression matrix and per-gene precision weights from a
@@ -104,11 +119,20 @@ weights are replaced by the minimum finite weight. This replacement is
 required: downstream weighted least squares rejects non-finite weights.
 }
 \examples{
-\dontrun{
+\donttest{
 library(DESeq2)
-dds <- DESeq(dds)
+dds <- makeExampleDESeqDataSet(n = 500)
+isB <- colData(dds)$condition == "B"
+ct <- counts(dds)
+ct[1:60, isB] <- ct[1:60, isB] * 5 + 500
+storage.mode(ct) <- "integer"
+counts(dds) <- ct
+dds <- DESeq(dds, quiet = TRUE)
+
 dd <- as_dsea(dds)
-dsea(dd, gene_sets, contrast = "dex_untrt_vs_trt")
+names(dd)                        # E, weights, design, counts, mu, alpha
+gene_sets <- list(SET1 = rownames(dds)[1:60])
+dsea(dd, gene_sets, contrast = "condition_B_vs_A", method = "fry")
 }
 
 }

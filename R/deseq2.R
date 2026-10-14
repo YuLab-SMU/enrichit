@@ -291,13 +291,28 @@ as_genes.DESeqDataSet <- function(x,
 #'   delta-method weights. A single positive finite number; default \code{1}.
 #' @param ... Ignored, for S3 generic consistency.
 #'
-#' @return An object of S3 class \code{"DseaData"}: a list with elements
+#' @return An object of S3 class \code{"DseaData"}: a list with elements, in
+#' this fixed order,
 #' \describe{
 #'   \item{\code{E}}{G x n matrix of log2 expression values.}
 #'   \item{\code{weights}}{G x n matrix of precision weights, or \code{NULL}.}
 #'   \item{\code{design}}{The n x p design matrix, with \code{colnames} used
 #'     for contrast resolution.}
+#'   \item{\code{counts}}{G x n integer matrix of raw counts,
+#'     \code{DESeq2::counts(x)}.}
+#'   \item{\code{mu}}{G x n matrix of fitted means,
+#'     \code{SummarizedExperiment::assay(x, "mu")}, stored \emph{unfloored}
+#'     (the \code{mu.floor} clamp is applied only inside the weight formula,
+#'     never to this field).}
+#'   \item{\code{alpha}}{Length-G numeric vector of EB-shrunk per-gene
+#'     dispersions, \code{mcols(x)$dispersion}, with \code{NA} replaced
+#'     by \code{1}.}
 #' }
+#' The last three fields carry the \pkg{DESeq2} fit forward so that an NB
+#' parametric-bootstrap zero distribution can be generated from the very model
+#' that produced the observed statistic; \code{dsea()} itself reads only
+#' \code{E}, \code{weights} and \code{design}, so adding these fields leaves the
+#' observed-test pipeline bit-for-bit unchanged.
 #'
 #' @details
 #' \strong{Why the library size is \code{mean(colSums(ct)) * norm.factors}.}
@@ -366,11 +381,20 @@ as_genes.DESeqDataSet <- function(x,
 #' required: downstream weighted least squares rejects non-finite weights.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' library(DESeq2)
-#' dds <- DESeq(dds)
+#' dds <- makeExampleDESeqDataSet(n = 500)
+#' isB <- colData(dds)$condition == "B"
+#' ct <- counts(dds)
+#' ct[1:60, isB] <- ct[1:60, isB] * 5 + 500
+#' storage.mode(ct) <- "integer"
+#' counts(dds) <- ct
+#' dds <- DESeq(dds, quiet = TRUE)
+#'
 #' dd <- as_dsea(dds)
-#' dsea(dd, gene_sets, contrast = "dex_untrt_vs_trt")
+#' names(dd)                        # E, weights, design, counts, mu, alpha
+#' gene_sets <- list(SET1 = rownames(dds)[1:60])
+#' dsea(dd, gene_sets, contrast = "condition_B_vs_A", method = "fry")
 #' }
 #'
 #' @seealso \code{\link{dsea}}
@@ -450,8 +474,34 @@ as_dsea.DESeqDataSet <- function(x, norm.factors = DESeq2::sizeFactors(x),
     }
     design <- as.matrix(design)
 
+    ## ---- NB resampling inputs (additive; see NB_IMPLEMENT_SPEC §1.3) -------
+    ## These three fields carry the *raw* DESeq2 fit forward so that a
+    ## parametric-bootstrap zero distribution can be generated from exactly the
+    ## model that produced the observed statistic. Nothing above reads them, so
+    ## E / weights / design are bit-for-bit unchanged by this addition.
+    ##
+    ## `mu` is stored UNFLOORED on purpose. The pmax(mu, mu.floor) flooring
+    ## belongs to the weight formula only; a consumer that resamples needs the
+    ## fitted mean itself and applies its own floor (`mu_floor` argument), so
+    ## pre-flooring the stored field would silently pin the lower tail of the
+    ## NB to `mu.floor` and change the zero distribution.
+    ##
+    ## `alpha` has NA (genes dropped by independent filtering, or dispersion-fit
+    ## failures) replaced by 1 -- the same convention the weight fallback encodes
+    ## implicitly -- so downstream `size = 1/alpha_g` is always defined. Note
+    ## this replacement does *not* feed back into `w` above.
+    alpha_stored <- as.numeric(alpha)
+    alpha_stored[is.na(alpha_stored)] <- 1
+
     structure(
-        list(E = E, weights = w, design = design),
+        list(
+            E = E,
+            weights = w,
+            design = design,
+            counts = ct,
+            mu = mu,
+            alpha = alpha_stored
+        ),
         class = "DseaData"
     )
 }
