@@ -111,98 +111,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// st_nb_boot_cpp
-Rcpp::List st_nb_boot_cpp(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix mu, Rcpp::NumericVector alpha, Rcpp::NumericVector norm_factors, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, int B, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, double mu_floor, std::string statistic, Rcpp::NumericVector beta, Rcpp::NumericVector se);
-RcppExport SEXP _enrichit_st_nb_boot_cpp(SEXP countsSEXP, SEXP muSEXP, SEXP alphaSEXP, SEXP norm_factorsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP BSEXP, SEXP gene_weightsSEXP, SEXP mu_floorSEXP, SEXP statisticSEXP, SEXP betaSEXP, SEXP seSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type alpha(alphaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type norm_factors(norm_factorsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
-    Rcpp::traits::input_parameter< int >::type B(BSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
-    Rcpp::traits::input_parameter< double >::type mu_floor(mu_floorSEXP);
-    Rcpp::traits::input_parameter< std::string >::type statistic(statisticSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type beta(betaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type se(seSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_nb_boot_cpp(counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_nb_null_mu_cpp
-Rcpp::List st_nb_null_mu_cpp(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix mu, Rcpp::NumericVector alpha, Rcpp::NumericVector norm_factors, Rcpp::NumericMatrix design, int contrast_idx);
-RcppExport SEXP _enrichit_st_nb_null_mu_cpp(SEXP countsSEXP, SEXP muSEXP, SEXP alphaSEXP, SEXP norm_factorsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type alpha(alphaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type norm_factors(norm_factorsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_nb_null_mu_cpp(counts, mu, alpha, norm_factors, design, contrast_idx));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_nb_resample_cpp
-Rcpp::IntegerMatrix st_nb_resample_cpp(Rcpp::NumericMatrix null_mu, Rcpp::NumericVector alpha, int b);
-RcppExport SEXP _enrichit_st_nb_resample_cpp(SEXP null_muSEXP, SEXP alphaSEXP, SEXP bSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type null_mu(null_muSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type alpha(alphaSEXP);
-    Rcpp::traits::input_parameter< int >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_nb_resample_cpp(null_mu, alpha, b));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_nb_pipeline_cpp
-Rcpp::List st_nb_pipeline_cpp(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix mu, Rcpp::NumericVector alpha, Rcpp::NumericVector norm_factors, Rcpp::NumericMatrix design, int contrast_idx, double mu_floor);
-RcppExport SEXP _enrichit_st_nb_pipeline_cpp(SEXP countsSEXP, SEXP muSEXP, SEXP alphaSEXP, SEXP norm_factorsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP mu_floorSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type alpha(alphaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type norm_factors(norm_factorsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< double >::type mu_floor(mu_floorSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_nb_pipeline_cpp(counts, mu, alpha, norm_factors, design, contrast_idx, mu_floor));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_nb_null_draws_cpp
-Rcpp::List st_nb_null_draws_cpp(Rcpp::IntegerMatrix counts, Rcpp::NumericMatrix mu, Rcpp::NumericVector alpha, Rcpp::NumericVector norm_factors, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, int B, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, double mu_floor, std::string statistic, Rcpp::NumericVector beta, Rcpp::NumericVector se);
-RcppExport SEXP _enrichit_st_nb_null_draws_cpp(SEXP countsSEXP, SEXP muSEXP, SEXP alphaSEXP, SEXP norm_factorsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP BSEXP, SEXP gene_weightsSEXP, SEXP mu_floorSEXP, SEXP statisticSEXP, SEXP betaSEXP, SEXP seSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::IntegerMatrix >::type counts(countsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type alpha(alphaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type norm_factors(norm_factorsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
-    Rcpp::traits::input_parameter< int >::type B(BSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
-    Rcpp::traits::input_parameter< double >::type mu_floor(mu_floorSEXP);
-    Rcpp::traits::input_parameter< std::string >::type statistic(statisticSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type beta(betaSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type se(seSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_nb_null_draws_cpp(counts, mu, alpha, norm_factors, design, contrast_idx, index, B, gene_weights, mu_floor, statistic, beta, se));
-    return rcpp_result_gen;
-END_RCPP
-}
 // rwr_eigen_cpp
 Rcpp::List rwr_eigen_cpp(const Eigen::Map<Eigen::SparseMatrix<double>>& A, const Eigen::Map<Eigen::VectorXd>& v, double restart, double threshold, int max_iter);
 RcppExport SEXP _enrichit_rwr_eigen_cpp(SEXP ASEXP, SEXP vSEXP, SEXP restartSEXP, SEXP thresholdSEXP, SEXP max_iterSEXP) {
@@ -218,84 +126,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// st_squeeze_var_cpp
-Rcpp::List st_squeeze_var_cpp(Rcpp::NumericVector var_in, double df);
-RcppExport SEXP _enrichit_st_squeeze_var_cpp(SEXP var_inSEXP, SEXP dfSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type var_in(var_inSEXP);
-    Rcpp::traits::input_parameter< double >::type df(dfSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_squeeze_var_cpp(var_in, df));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_effects_cpp
-Rcpp::NumericMatrix st_effects_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx);
-RcppExport SEXP _enrichit_st_effects_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_effects_cpp(E, weights, design, contrast_idx));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_camera_cpp
-Rcpp::List st_camera_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, Rcpp::Nullable<double> inter_gene_cor, bool allow_neg_cor);
-RcppExport SEXP _enrichit_st_camera_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP inter_gene_corSEXP, SEXP allow_neg_corSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type inter_gene_cor(inter_gene_corSEXP);
-    Rcpp::traits::input_parameter< bool >::type allow_neg_cor(allow_neg_corSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_camera_cpp(E, weights, design, contrast_idx, index, inter_gene_cor, allow_neg_cor));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_fry_cpp
-Rcpp::List st_fry_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, std::string standardize);
-RcppExport SEXP _enrichit_st_fry_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP gene_weightsSEXP, SEXP standardizeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
-    Rcpp::traits::input_parameter< std::string >::type standardize(standardizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_fry_cpp(E, weights, design, contrast_idx, index, gene_weights, standardize));
-    return rcpp_result_gen;
-END_RCPP
-}
-// st_roast_cpp
-Rcpp::List st_roast_cpp(Rcpp::NumericMatrix E, Rcpp::Nullable<Rcpp::NumericMatrix> weights, Rcpp::NumericMatrix design, int contrast_idx, Rcpp::List index, std::string set_statistic, Rcpp::Nullable<Rcpp::NumericVector> gene_weights, int nrot);
-RcppExport SEXP _enrichit_st_roast_cpp(SEXP ESEXP, SEXP weightsSEXP, SEXP designSEXP, SEXP contrast_idxSEXP, SEXP indexSEXP, SEXP set_statisticSEXP, SEXP gene_weightsSEXP, SEXP nrotSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type E(ESEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type weights(weightsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type design(designSEXP);
-    Rcpp::traits::input_parameter< int >::type contrast_idx(contrast_idxSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type index(indexSEXP);
-    Rcpp::traits::input_parameter< std::string >::type set_statistic(set_statisticSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type gene_weights(gene_weightsSEXP);
-    Rcpp::traits::input_parameter< int >::type nrot(nrotSEXP);
-    rcpp_result_gen = Rcpp::wrap(st_roast_cpp(E, weights, design, contrast_idx, index, set_statistic, gene_weights, nrot));
-    return rcpp_result_gen;
-END_RCPP
-}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_ora_cpp", (DL_FUNC) &_enrichit_ora_cpp, 4},
@@ -304,17 +134,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_enrichit_gsea_multilevel_cpp", (DL_FUNC) &_enrichit_gsea_multilevel_cpp, 13},
     {"_enrichit_gsea_scores_cpp", (DL_FUNC) &_enrichit_gsea_scores_cpp, 3},
     {"_enrichit_gsea_es_all_cpp", (DL_FUNC) &_enrichit_gsea_es_all_cpp, 4},
-    {"_enrichit_st_nb_boot_cpp", (DL_FUNC) &_enrichit_st_nb_boot_cpp, 13},
-    {"_enrichit_st_nb_null_mu_cpp", (DL_FUNC) &_enrichit_st_nb_null_mu_cpp, 6},
-    {"_enrichit_st_nb_resample_cpp", (DL_FUNC) &_enrichit_st_nb_resample_cpp, 3},
-    {"_enrichit_st_nb_pipeline_cpp", (DL_FUNC) &_enrichit_st_nb_pipeline_cpp, 7},
-    {"_enrichit_st_nb_null_draws_cpp", (DL_FUNC) &_enrichit_st_nb_null_draws_cpp, 13},
     {"_enrichit_rwr_eigen_cpp", (DL_FUNC) &_enrichit_rwr_eigen_cpp, 5},
-    {"_enrichit_st_squeeze_var_cpp", (DL_FUNC) &_enrichit_st_squeeze_var_cpp, 2},
-    {"_enrichit_st_effects_cpp", (DL_FUNC) &_enrichit_st_effects_cpp, 4},
-    {"_enrichit_st_camera_cpp", (DL_FUNC) &_enrichit_st_camera_cpp, 7},
-    {"_enrichit_st_fry_cpp", (DL_FUNC) &_enrichit_st_fry_cpp, 7},
-    {"_enrichit_st_roast_cpp", (DL_FUNC) &_enrichit_st_roast_cpp, 8},
     {NULL, NULL, 0}
 };
 

@@ -8,7 +8,6 @@ S3method("[[",enrichResult)
 S3method("[[",gseaResult)
 S3method(as.data.frame,enrichResult)
 S3method(as.data.frame,gseaResult)
-S3method(as_dsea,DESeqDataSet)
 S3method(as_enrichResult,default)
 S3method(as_genes,DESeqDataSet)
 S3method(as_genes,DESeqResults)
@@ -25,12 +24,13 @@ S3method(geneInCategory,enrichResult)
 S3method(geneInCategory,gseaResult)
 S3method(head,enrichResult)
 S3method(head,gseaResult)
+S3method(print,DseaResult)
+S3method(print,DseaScores)
 S3method(tail,enrichResult)
 S3method(tail,gseaResult)
 export(EXTID2NAME)
 export(aggregate_enrichment)
 export(aggregate_omics)
-export(as_dsea)
 export(as_enrichResult)
 export(as_genes)
 export(as_gseaResult)
@@ -40,6 +40,7 @@ export(bayes_summary)
 export(classify_omics_pattern)
 export(collapse_multilayer_scores)
 export(dsea)
+export(dsea_scores)
 export(extract_mnsea_subnetwork)
 export(geneID)
 export(geneInCategory)
@@ -92,9 +93,7 @@ importFrom(stats,
   setNames
 )
 importFrom(utils,
-  getFromNamespace,
   head,
-  modifyList,
   str,
   tail
 )

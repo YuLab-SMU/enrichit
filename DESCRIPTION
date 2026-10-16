@@ -37,6 +37,7 @@ Suggests:
     DOSE,
     fgsea,
     gson,
+    GSVA,
     qvalue,
     SummarizedExperiment,
     testthat 
