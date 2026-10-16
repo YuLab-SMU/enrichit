@@ -1,74 +1,15 @@
 # enrichit 0.2.6.9000
 
-- add DESeq2 adapters `as_ranked()` and `as_genes()`: S3 generics with
-  methods for `DESeqResults` and (fitted) `DESeqDataSet` objects
-  - `as_ranked()` extracts a descending-sorted statistic vector for
-    `gsea()`: the Wald `stat` by default (falls back to
-    `log2FoldChange` for `lfcShrink(type = "apeglm")` results, which
-    lack a `stat` column), non-finite values dropped with a message,
-    duplicated gene identifiers resolved to the largest absolute value
-    with a warning
-  - `as_genes()` extracts a significant-gene vector for `ora()`:
-    `padj < cutoff` with `direction = "both"/"up"/"down"` and an
-    optional post-hoc `minAbsLFC` filter (documented as post-hoc; use
-    `results(lfcThreshold =)` to change the test itself)
-  - `DESeqDataSet` methods forward `...` to `DESeq2::results()`
-    (`contrast`, `name`, `alpha`, ...); `DESeq2` is added to
-    `Suggests` and checked lazily via `rlang::check_installed()`
-- add `as_dsea()`: convert a fitted `DESeqDataSet` into `DseaData`, the
-  package's own container (`list(E, weights, design)`). Per-observation
-  precision weights are derived from DESeq2's own genome-wide estimates via the
-  delta method, `w_ij = (mu + 0.5)^2 log(2)^2 / (mu + alpha * mu^2)` on the
-  fitted means (`assay(x, "mu")`) and EB-shrunk dispersions
-  (`mcols(x)$dispersion`), reusing the NB mean-variance law instead of
-  re-learning a voom-style trend; fitted means are floored (`mu.floor`, default
-  1) to avoid the delta-method singularity at zero, NA dispersions get
-  `alpha = 1`, and non-finite weights (all-zero genes have NA fitted means) are
-  replaced by the minimum finite weight. The library size is
-  `mean(colSums(counts)) * norm.factors`, **not** `colSums(counts) *
-  norm.factors`: DESeq2's `sizeFactors()` are depth-like (median-of-ratios,
-  geometric mean 1), so multiplying them by the raw depth counts depth twice and
-  leaves a `-log2(colSums_j)` per-sample offset in `E` that a linear design
-  cannot absorb — measured on airway, the unmodelled per-sample offset falls from
-  0.344 to 0.127 log2 units and `cor(colMeans(E), -log2(colSums))` from 0.998 to
-  0.983. `design` is DESeq2's stored model matrix, columns named as in
-  `DESeq2::resultsNames()` (2026-10-14, Wed)
-- add `dsea()`: run competitive and rotation gene-set tests (`camera` / `roast`
-  / `fry`) directly on a fitted `DESeqDataSet`, a `DseaData` container, or a
-  bare `list(E, weights, design)`. `contrast` accepts a design column name, a
-  column index, or a contrast vector. Returns one row per set with `set`,
-  `NGenes`, `Direction` (`"Down"`/`"Up"`), `PValue` and `Statistic`, keyed by
-  gene-set name. P-values are returned **unadjusted**: the right multiple-testing
-  family depends on how the caller collected the sets, so `stats::p.adjust()` is
-  left to the caller (2026-10-14, Wed)
-- `camera`, `roast` and `fry` are computed by a self-contained C++ engine with
-  no third-party statistical dependency. The contrast-residual basis is obtained
-  by delegating the factorization to R's own `qr()` / `qr.qty()` rather than a
-  hand-written Householder: the latter diverged from R's LINPACK rounding on
-  numerically zero pivots — routine for per-gene weighted designs — where the
-  sign of the last basis vector flips, and because the set statistics take
-  `colMeans()` of the residual coordinates (not a basis invariant) that changed
-  p-values outright. With the delegation, weighted, unweighted and
-  `gene.weights` paths agree with the reference implementation to within
-  numerical precision (camera/fry <= 5e-15, roast bit-exact under an identical
-  `set.seed()`), rank-deficient designs error explicitly via `qr()$rank`, and
-  the weighted path scales linearly in the number of genes (an earlier per-gene
-  response matrix made it quadratic). The engine consumes the caller's RNG
-  stream and never re-seeds itself, so permutation-style nulls stay independent
-  across replicates (2026-10-14, Wed)
-- `roast`'s `midp` is accepted for drop-in compatibility but is a documented
-  no-op, because it only adjusts the multiple-testing columns of the reference
-  implementation and `dsea()` returns no such column; a non-logical value is
-  rejected rather than silently dropped
-- **breaking change before release**: the limma `EList` bridge `as_elist()`, the
-  `engine` argument and its `"limma"` delegation were removed while 0.2.6.9000
-  was still unreleased, so `dsea()` has exactly one engine — the native C++ one —
-  and `limma` is dropped from `Suggests`. The motivation is that zero-dependency
-  pure-C++ set tests are the point of this work, and `EList` smuggled in a voom
-  modelling assumption that does not fit the NB route taken here; callers who
-  want the comparison should install limma themselves and call its set tests
-  directly. `airway` replaces `limma` in `Suggests` for the `dsea()` examples
-  (2026-10-14, Wed)
+- validate count matrices, gene-set identifiers, and full-rank, sample-aligned
+  design matrices; add tests for contrast ranking, nuisance covariates, input
+  validation, and reproducible pathway scores
+- add `dsea_scores()` to return per-sample ssGSEA pathway scores from counts
+- add `dsea()` for design-aware GSEA from counts: transform expression, rank
+  genes by the requested design contrast, and run the package GSEA engine;
+  results include Benjamini–Hochberg adjusted p-values and the tested contrast
+- add `as_ranked()` and `as_genes()` adapters for `DESeqResults` and fitted
+  `DESeqDataSet` objects, providing ranked statistics for `gsea()` and
+  significant-gene vectors for `ora()`; `DESeq2` is a suggested dependency
 
 # enrichit 0.2.6
 
