@@ -39,6 +39,7 @@ Suggests:
     DOSE,
     fgsea,
     gson,
+    jsonlite,
     qvalue,
     testthat 
 Encoding: UTF-8
