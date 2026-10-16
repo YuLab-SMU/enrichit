@@ -80,7 +80,17 @@
         return(list(E = E, args = list(transform = "logcpm", size_factors = sf)))
     }
     rlang::check_installed("DESeq2", "for variance-stabilising the input.")
-    dds <- if (is(x, "DESeqDataSet")) x else DESeq2::DESeqDataSetFromMatrix(counts, DataFrame(counts))
+    if (is(x, "DESeqDataSet")) {
+        dds <- x
+    } else {
+        ## A bare counts matrix with no design: DESeq2::vst() needs a DESeqDataSet
+        ## with a valid colData row per sample, so build one.  This path has no
+        ## design to use, which is exactly why blind=TRUE is correct here -- the
+        ## design is unknown by construction.
+        cds <- S4Vectors::DataFrame(sample = seq_along(colnames(counts)),
+                                    row.names = colnames(counts))
+        dds <- DESeq2::DESeqDataSetFromMatrix(counts, cds, ~ 1)
+    }
     ## vst()/rlog() need a dispersion trend.  If the caller already ran DESeq()
     ## the object carries one; otherwise vst() estimates it internally.  Either
     ## way, record which happened so the result's provenance is reconstructable.
@@ -105,12 +115,19 @@
     ## median-of-ratios, as DESeq2::estimateSizeFactors does, so that the
     ## fallback path matches the DESeqDataSet path to within rounding.
     lc <- log(counts)
-    ok <- is.finite(lc) & lc > 0
     sf <- rep(1, ncol(counts))
     if (all(colSums(counts) > 0)) {
-        gm <- exp(rowMeans(lc[ok, , drop = FALSE]))
-        ratio <- lc[ok, , drop = FALSE] - log(gm)
-        sf <- apply(ratio, 2L, stats::median)
+        ## ok flags CELLS that can enter the geometric mean; it must be applied
+        ## to rows so that lc[ok, ] and gm stay on the same row set.  Filtering
+        ## columns here instead is an earlier bug: the subscript outlived the
+        ## matrix and the median fell off the end.
+        ok <- apply(lc, 1L, function(v) all(is.finite(v)) && all(v > 0))
+        if (any(ok)) {
+            lcs <- lc[ok, , drop = FALSE]
+            gm <- exp(rowMeans(lcs))
+            ratio <- lcs - log(gm)
+            sf <- apply(ratio, 2L, stats::median)
+        }
         if (any(!is.finite(sf)) || any(sf <= 0)) sf <- rep(1, ncol(counts))
     }
     sf

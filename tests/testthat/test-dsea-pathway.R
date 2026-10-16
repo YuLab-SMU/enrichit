@@ -183,6 +183,51 @@ test_that("A10: OLS coefficients match limma::lmFit exactly", {
     expect_equal(unname(mine$se^2 / mine$moderation$se2), rep(v, m), tolerance = 1e-12)
 })
 
+test_that("A10b: post-hoc variance moderation matches limma::.squeezeVar", {
+    skip_if_no("limma")
+    ## The moderation FORMULA is separate code from the prior estimator, and it
+    ## had a real bug (weights swapped) that the fitFDist and lmFit golden tests
+    ## could not see.  Pin the formula by feeding BOTH implementations the same
+    ## prior -- the one .dsea_moderate actually estimates -- so the comparison
+    ## isolates the formula and not the estimator.
+    set.seed(31)
+    for (dof in c(3, 6, 25)) {
+        m <- 200
+        s2 <- rchisq(m, df = dof) / dof * exp(rnorm(m, 0, 0.8))
+        fit <- .dsea_fit_prior(s2, dof)
+        ## force a finite prior df so the comparison exercises the formula
+        d0 <- if (is.finite(fit$df2)) fit$df2 else 10
+        s0 <- fit$scale
+        ref <- limma:::.squeezeVar(var = s2, df = rep(dof, m),
+                                   var.prior = s0, df.prior = rep(d0, m))
+        mine <- (dof * s2 + d0 * s0) / (dof + d0)
+        expect_equal(unname(mine), unname(ref), tolerance = 1e-10)
+    }
+    ## weight direction: the pathway's OWN df multiplies its own s2
+    s2 <- c(1, 4); s0 <- 2; d0 <- 5; dof <- 6
+    expect_equal((dof * s2 + d0 * s0) / (dof + d0), c(16/11, 34/11), tolerance = 1e-12)
+    ## and .dsea_moderate must be consistent with that formula
+    mod <- .dsea_moderate(s2, v = 1, dof = dof, moderate = "eb")
+    expect_equal(unname(mod$se2), (dof * s2 + mod$prior_df * mod$prior_scale) / (dof + mod$prior_df),
+                 tolerance = 1e-10)
+})
+
+test_that("size factors computed on a bare matrix match DESeq2", {
+    skip_if_no("DESeq2")
+    set.seed(32)
+    cnt <- matrix(rnbinom(800 * 8, mu = 200, size = 20), 800, 8,
+                  dimnames = list(paste0("g", 1:800), paste0("s", 1:8)))
+    expect_equal(.dsea_sizefactors(cnt),
+                 DESeq2::estimateSizeFactors.forMatrix(cnt), tolerance = 1e-8)
+})
+
+test_that("contrast = NULL tests every column of an intercept-free design", {
+    X0 <- cbind(trt = rep(c(0, 1), 4))          # no intercept: col 1 IS a contrast
+    expect_equal(.dsea_resolve_contrasts(NULL, X0), 1L)
+    X1 <- cbind(intercept = 1, trt = rep(c(0, 1), 4))
+    expect_equal(.dsea_resolve_contrasts(NULL, X1), 2L)
+})
+
 test_that("A2: a standardised t is O(1) under the null", {
     set.seed(13)
     n <- 20; m <- 500

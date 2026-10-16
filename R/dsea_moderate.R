@@ -53,7 +53,13 @@
 
 .dsea_resolve_contrasts <- function(contrast, design) {
     if (is.null(contrast)) {
-        idx <- which(seq_len(ncol(design)) > 1L)
+        ## Everything except a leading intercept.  An intercept is only skipped
+        ## when the design actually has one (first column is constant); a design
+        ## without an intercept has no column to skip, and skipping its first
+        ## column would silently drop a real contrast.
+        has_int <- ncol(design) > 1L &&
+            isTRUE(all.equal(as.numeric(design[, 1L]), rep(1, nrow(design))))
+        idx <- if (has_int) seq_len(ncol(design))[-1L] else seq_len(ncol(design))
         if (length(idx) == 0L) {
             stop("'design' has only an intercept; there is nothing to test.", call. = FALSE)
         }
@@ -193,8 +199,9 @@
 
 .dsea_moderate <- function(s2, v, dof, moderate) {
     if (dof <= 0) {
-        return(list(se2 = s2, df.total = 1, prior_scale = NA_real_, prior_df = NA_real_,
-                    method = "none"))
+        stop("the design leaves no residual degrees of freedom (n = p); ",
+             "nothing can be tested. Add samples or simplify the design.",
+             call. = FALSE)
     }
     if (moderate == "none") {
         return(list(se2 = s2, df.total = dof, prior_scale = NA_real_, prior_df = Inf,
@@ -204,11 +211,20 @@
     d0 <- prior$df2
     s0 <- prior$scale
     if (!is.finite(d0)) {
-        se2 <- s2
-        df.post <- dof
+        se2 <- rep(s0, length(s2))
+        df.post <- dof + d0
     } else {
-        se2 <- (d0 * s2 + s0) / (d0 + dof)
-        df.post <- d0 + dof
+        ## (df * s2 + df.prior * s0) / (df + df.prior), exactly as limma's
+        ## .squeezeVar does.  An earlier revision wrote (d0 * s2 + s0) here:
+        ## the weights were swapped, so the poorly-estimated variance got the
+        ## LARGE weight and the prior was added with no degree-of-freedom
+        ## weighting at all.  The shrinkage pulled every pathway towards the
+        ## prior less when the pathway's own estimate was least trustworthy --
+        ## the exact opposite of the intent -- and no test covered it, because
+        ## the golden tests pinned fitFDist and the OLS coefficients but not
+        ## this line.
+        se2 <- (dof * s2 + d0 * s0) / (dof + d0)
+        df.post <- dof + d0
     }
     se2[!is.finite(se2) | se2 < 0] <- NA_real_
     list(se2 = se2, df.total = df.post, prior_scale = s0, prior_df = d0,
