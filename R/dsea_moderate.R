@@ -90,11 +90,27 @@
 
 ## ---- standardisation -------------------------------------------------------
 
+## Centre and scale each pathway, but do NOT force unit variance.
+##
+## Forcing sd = 1 makes every pathway's residual variance identical by
+## construction, and empirical Bayes moderation exists precisely to borrow
+## strength ACROSS differing variances.  Measured on KEGG: with unit-variance
+## standardisation sd(s2) == 0, the prior df came out infinite, all pathways
+## shared one variance, and calibration collapsed (0.2% rejected at a nominal
+## 5% on pure noise, a 25x conservative bias).
+##
+## Dividing by the MAD keeps the pathway-specific scale in the data, so the
+## variance heterogeneity survives: measured sd(s2) = 0.875 and a finite prior
+## df of 6.6 on the same data.
+##
+## Not scaling at all is worse still: raw ssGSEA scores put pathways on wildly
+## different scales, the moderation is then driven by scale rather than by
+## information, and a planted 1.87-sd signal lost significance entirely.
 .dsea_standardize <- function(S) {
-    mu <- rowMeans(S)
-    sdv <- apply(S, 1L, stats::sd)
-    bad <- !is.finite(sdv) | sdv <= 0
-    Z <- (S - mu) / sdv
+    center <- apply(S, 1L, stats::median)
+    scale <- apply(S, 1L, stats::mad)
+    bad <- !is.finite(scale) | scale <= 0
+    Z <- (S - center) / scale
     if (any(bad)) Z[bad, ] <- NA_real_
     attr(Z, "dropped_constant") <- rownames(S)[bad]
     Z
@@ -131,7 +147,13 @@
     v <- RinvXtRinv[ci, ci]                # contrast variance multiplier
     QtY <- crossprod(Q, Y)                 # t(Q) Y, rank x pathways
     coef <- Rinv %*% QtY                   # rank x pathways
-    fitted <- Q %*% coef
+    ## fitted must be X %*% coef, NOT Q %*% coef.  Q %*% coef = Q R^-1 Q' Y,
+    ## which equals the hat matrix only when R is the identity.  Using it made
+    ## every residual variance too large (mean s2 = 1.81 where the truth is
+    ## 1.01), which inflated the EB prior five-fold and left the test many times
+    ## too conservative -- a failure the coefficient checks could not see,
+    ## because the coefficients themselves were exactly right.
+    fitted <- design %*% coef
     beta <- coef[ci, ]
     resid <- Y - fitted
     s2 <- colSums(resid^2) / dof
@@ -211,8 +233,21 @@
     d0 <- prior$df2
     s0 <- prior$scale
     if (!is.finite(d0)) {
+        ## df.prior = Inf means the observed spread of log variances is exactly
+        ## what sampling noise predicts, so there is no evidence of
+        ## heterogeneity and every pathway estimates the same variance.  The
+        ## prior then IS the pooled variance, s0 = mean(s2), which carries the
+        ## degrees of freedom of every pathway combined: m * dof, not the
+        ## residual dof of one pathway.  Verified against limma::eBayes on
+        ## eight (m, dof) combinations.
+        ##
+        ## Two earlier revisions got this wrong in opposite directions: the
+        ## first wrote dof + Inf = Inf, so p-values were read off the NORMAL
+        ## distribution (0.0068 where t(6) gives 0.035); the second used dof,
+        ## which is far too few for a variance estimated from all m pathways
+        ## and made the test many times too conservative.
         se2 <- rep(s0, length(s2))
-        df.post <- dof + d0
+        df.post <- length(s2) * dof
     } else {
         ## (df * s2 + df.prior * s0) / (df + df.prior), exactly as limma's
         ## .squeezeVar does.  An earlier revision wrote (d0 * s2 + s0) here:

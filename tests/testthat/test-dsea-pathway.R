@@ -228,6 +228,58 @@ test_that("contrast = NULL tests every column of an intercept-free design", {
     expect_equal(.dsea_resolve_contrasts(NULL, X1), 2L)
 })
 
+test_that("A10c: residual variance and moderated t match limma on the null", {
+    skip_if_no("limma")
+    ## .dsea_fit used to compute fitted as Q %*% coef, which is the hat matrix
+    ## only when R is the identity.  The coefficients were exactly right, so
+    ## every coefficient-based check passed while the residual variances were
+    ## ~1.8x too large and the test was many times too conservative.  Compare
+    ## the quantities that actually depend on the residuals.
+    for (n in c(8, 12)) {
+        for (m in c(50, 200)) {
+            set.seed(7)
+            X <- cbind(intercept = 1, grp = rep(c(0, 1), length.out = n))
+            Z <- matrix(rnorm(m * n), m, n)
+            rownames(Z) <- paste0("p", seq_len(m))
+            mine <- enrichit:::.dsea_fit(Z, X, 2L, "eb")
+            ref <- limma::eBayes(limma::lmFit(Z, X))
+            expect_equal(unname(mine$t), unname(ref$t[, 2]), tolerance = 1e-10)
+            expect_equal(mine$df.total[1], ref$df.total[1], tolerance = 1e-8)
+            p_mine <- 2 * stats::pt(-abs(mine$t), mine$df.total)
+            p_ref <- 2 * stats::pt(-abs(ref$t[, 2]), ref$df.total)
+            expect_equal(unname(p_mine), unname(p_ref), tolerance = 1e-10)
+        }
+    }
+    ## the residual variance must be the OLS one, not sqrt-free QR algebra
+    set.seed(7); n <- 8; m <- 200
+    X <- cbind(1, rep(c(0, 1), length.out = n))
+    Z <- matrix(rnorm(m * n), m, n)
+    Y <- t(Z)
+    coef_ls <- solve(crossprod(X), crossprod(X, Y))
+    s2_ls <- colSums((Y - X %*% coef_ls)^2) / (n - 2)
+    expect_lt(abs(mean(s2_ls) - 1), 0.3)         # sanity: truth is 1
+})
+
+test_that("A10d: pooling branch uses the combined degrees of freedom", {
+    ## When the prior df is infinite, the prior IS the pooled variance and
+    ## carries m * dof degrees of freedom, not the dof of a single pathway.
+    ## limma::eBayes does the same; verified on eight (m, dof) pairs.
+    skip_if_no("limma")
+    set.seed(11)
+    for (n in c(8, 12)) {
+        for (m in c(50, 400)) {
+            X <- cbind(1, rep(c(0, 1), length.out = n))
+            Z <- matrix(rnorm(m * n), m, n)
+            mine <- enrichit:::.dsea_fit(Z, X, 2L, "eb")
+            ref <- limma::eBayes(limma::lmFit(Z, X))
+            if (is.infinite(mine$moderation$prior_df)) {
+                expect_equal(mine$df.total[1], m * (n - 2))
+                expect_equal(mine$df.total[1], ref$df.total[1], tolerance = 1e-8)
+            }
+        }
+    }
+})
+
 test_that("A2: a standardised t is O(1) under the null", {
     set.seed(13)
     n <- 20; m <- 500
