@@ -24,7 +24,9 @@ Imports:
     methods,
     Rcpp (>= 1.0.10),
     rlang,
+    S4Vectors,
     stats,
+    SummarizedExperiment,
     yulab.utils (> 0.2.1)
 LinkingTo: 
     Rcpp, 
@@ -37,9 +39,7 @@ Suggests:
     DOSE,
     fgsea,
     gson,
-    GSVA,
     qvalue,
-    SummarizedExperiment,
     testthat 
 Encoding: UTF-8
 URL: https://yulab-smu.top/biomedical-knowledge-mining-book/
