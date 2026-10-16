@@ -39,9 +39,9 @@ Suggests:
     DOSE,
     fgsea,
     gson,
-    jsonlite,
     qvalue,
-    testthat 
+    testthat,
+    jsonlite
 Encoding: UTF-8
 URL: https://yulab-smu.top/biomedical-knowledge-mining-book/
 Roxygen: list(markdown = TRUE)
