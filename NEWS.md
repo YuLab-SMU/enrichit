@@ -1,13 +1,17 @@
 # enrichit 0.2.6.9000
 
-- `ora_gson()` no longer intersects every gene set with `extID` when no
-  `universe` is supplied. Without a universe those sets already come from the
-  same annotation table, so the step was an identity operation that hashed
-  `extID` once per set -- measured at 20 s of a 19 s `enrichGO()` call for the
-  14,209 human GO BP sets (PBMC 10k, 2026-10-18), and `compareCluster()` runs
-  ORA once per cluster (381 s -> 85 s for 13 clusters). A supplied `universe`
-  still takes the intersection, and a test pins that passing the full annotated
-  gene list as `universe` gives exactly the same result as passing none.
+- `ora_gson()` now intersects the gene sets with the background only when the
+  background was actually RESTRICTED. Intersecting with the full annotated gene
+  list is the identity -- the sets come from that same table -- but it is not
+  free: base `intersect()` hashes `extID` once per set, measured at 20 s for the
+  14,209 human GO BP sets (PBMC 10k, 2026-10-18). clusterProfiler passes the
+  full list explicitly when no universe is supplied, so the test is
+  `length(extID) < length(annotatedGenes)`, not `universe != NULL`. Measured on
+  a single ENTREZID `enrichGO()`: 19 s -> 4.2 s. For a 13-cluster SYMBOL
+  `compareCluster()` the total went 381 s -> 197 s; the rest is clusterProfiler's
+  per-cluster keytype mapping, not enrichit. Tests pin both directions: the full
+  annotated list gives exactly the no-universe result, and a universe that
+  removes a gene still shrinks the sets and the BgRatio denominator.
 
 - validate count matrices, gene-set identifiers, and full-rank, sample-aligned
   design matrices; add tests for contrast ranking, nuisance covariates, input

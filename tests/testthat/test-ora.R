@@ -201,3 +201,61 @@ test_that("ora_gson without universe equals ora_gson with the full gene universe
   expect_equal(no_universe@result$p.adjust, explicit@result$p.adjust, tolerance = 1e-12)
   expect_equal(no_universe@result$Count, explicit@result$Count)
 })
+
+## -- the identity skip must still intersect a RESTRICTED universe ----------
+## clusterProfiler passes the full annotated gene list explicitly when the
+## caller supplies no universe, so "a universe was given" is not the same as
+## "the background was restricted". This pins the latter: a universe that
+## removes a gene must still shrink the gene sets.
+test_that("ora_gson still intersects when the universe removes annotated genes", {
+  gsid2gene <- data.frame(
+    gsid = c("set1", "set1", "set2", "set2", "set3"),
+    gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4"),
+    stringsAsFactors = FALSE
+  )
+  gsid2name <- data.frame(
+    gsid = c("set1", "set2", "set3"),
+    name = c("Set 1", "Set 2", "Set 3"),
+    stringsAsFactors = FALSE
+  )
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = gsid2name,
+    species = "test",
+    gsname = "test",
+    version = "test",
+    accessed_date = as.character(Sys.Date()),
+    keytype = "UNKNOWN"
+  )
+  ## Gene4 is annotated but excluded from the background, so set3 must shrink
+  ## from 1 gene to 0 and disappear from the result.
+  res <- ora_gson(
+    gene = c("Gene1", "Gene2"),
+    pvalueCutoff = 1,
+    pAdjustMethod = "BH",
+    universe = c("Gene1", "Gene2", "Gene3"),
+    minGSSize = 1,
+    maxGSSize = 10,
+    qvalueCutoff = 1,
+    gson = gson_obj
+  )
+  expect_s4_class(res, "enrichResult")
+  expect_false("set3" %in% res@result$ID)
+  expect_true(all(c("set1", "set2") %in% res@result$ID))
+  ## Background size in BgRatio must be the restricted one (3), not 4.
+  expect_true(all(grepl("/3$", res@result$BgRatio)))
+
+  ## And the full annotated list (the clusterProfiler default spelling) must be
+  ## treated as unrestricted, matching the no-universe result exactly.
+  full <- ora_gson(
+    gene = c("Gene1", "Gene2"), pvalueCutoff = 1, pAdjustMethod = "BH",
+    universe = unique(gsid2gene$gene), minGSSize = 1, maxGSSize = 10,
+    qvalueCutoff = 1, gson = gson_obj
+  )
+  bare <- ora_gson(
+    gene = c("Gene1", "Gene2"), pvalueCutoff = 1, pAdjustMethod = "BH",
+    minGSSize = 1, maxGSSize = 10, qvalueCutoff = 1, gson = gson_obj
+  )
+  expect_equal(full@result$ID, bare@result$ID)
+  expect_equal(full@result$pvalue, bare@result$pvalue, tolerance = 1e-12)
+})
