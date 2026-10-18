@@ -6,7 +6,7 @@
 ## the product: a per-sample score matrix, for analyses that want samples rather
 ## than one contrast.
 ##
-## WHY GSEA AND NOT A SET TEST OF OUR OWN (PATHWAY_DSEA_SPEC.md section 0).
+## WHY GSEA AND NOT A SET TEST OF OUR OWN.
 ## We built a negative-binomial set test, then an empirical-Bayes moderated one,
 ## and benchmarked them against limma's fry and against plain GSEA on simulated
 ## KEGG data with known truth.  Across eight signal structures the ranking-based
@@ -17,10 +17,13 @@
 ## set test was therefore removed rather than tuned.
 ##
 ## The ranking statistic was tested too -- plain mean difference, moderated t,
-## DESeq2 Wald -- and the mean difference was best or tied everywhere; the worst
-## case was Wald at 0.759 recall under high dispersion.  Variance weighting on
-## top of a rank-based statistic double-counts, because GSEA has already
-## equalised the genes by rank.
+## DESeq2 Wald -- in the project's simulation benchmark (64 replicates per
+## scenario, 213 KEGG sets, planted effects with known truth).  Under uniform or
+## heterogeneous effects the four are indistinguishable; under an eightfold
+## dispersion multiplier the mean difference recalls 0.979 of the planted sets
+## and the Wald statistic 0.826.  Variance weighting on top of a rank-based
+## statistic double-counts, because GSEA has already equalised the genes by rank,
+## and it is worst exactly where the affected genes are the noisiest ones.
 
 ## ---- input handling --------------------------------------------------------
 
@@ -199,6 +202,78 @@
     i
 }
 
+## A design column is only a CONTRAST if it encodes a comparison.  Two kinds of
+## column do not, and both produce a plausible-looking table while answering a
+## different question:
+##
+##   - a constant column (the intercept).  Ranking by it orders genes by overall
+##     mean expression, so GSEA reports highly expressed pathways rather than
+##     differentially enriched ones.  This was the DEFAULT (contrast = 1L) until
+##     the guard below existed, and nothing errored: on a two-group design the
+##     recorded contrast was simply "(Intercept)".
+##   - an indicator column in a design with no constant column anywhere, i.e.
+##     cell-means coding such as `~ 0 + condition`.  Its coefficient is that
+##     group's mean, so ranking by it is again an expression-level ranking.
+##
+## A continuous column is a real coefficient (a dose slope, say) and stays
+## allowed, so the guard is deliberately about constants and group indicators
+## rather than about "the design must have an intercept".
+.dsea_check_contrast <- function(design, contrast) {
+    idx <- .dsea_resolve_one(contrast, design)
+    col <- design[, idx]
+    if (all(col == col[1L])) {
+        others <- setdiff(colnames(design), colnames(design)[idx])
+        stop("design column '", colnames(design)[idx], "' is constant (an intercept); ",
+             "ranking by it orders genes by mean expression, not by the contrast. ",
+             if (length(others)) paste0("Choose the column that encodes the comparison, e.g. '",
+                                        others[1L], "'. ") else "",
+             call. = FALSE)
+    }
+    has_constant <- any(vapply(seq_len(ncol(design)),
+                               function(j) all(design[, j] == design[1L, j]), logical(1)))
+    if (!has_constant && all(col %in% c(0, 1))) {
+        stop("'design' has no intercept, so column '", colnames(design)[idx],
+             "' is a group indicator and its coefficient is that group's mean, not a ",
+             "contrast. Build the design with an intercept (e.g. ~ condition) and select ",
+             "the condition column, or supply an explicit contrast vector.", call. = FALSE)
+    }
+    idx
+}
+
+## The transform step reads the design stored in a DESeqDataSet, while the
+## ranking step reads the `design` argument.  When those disagree the analysis
+## silently mixes two models: measured on a dds fitted with ~ cond and a
+## ~ patient + cond matrix passed in, the transformed values differ by up to
+## 0.648 log2 units.  There is no way to honour a design matrix without a
+## formula, so the honest fix is to say so instead of blending them quietly.
+##
+## The comparison is on COLUMN SPACE, not on entries.  `vst()` only depends on
+## the span of the design, and the same model is routinely written two ways:
+## model.matrix(~ cond) codes a dummy for the non-reference level while a
+## hand-built cbind(1, as.numeric(cond)) codes the other level, and the two span
+## the same space.  Comparing entries would warn on a perfectly consistent call.
+.dsea_check_design_agreement <- function(x, design) {
+    if (!is(x, "DESeqDataSet")) return(invisible(TRUE))
+    X <- tryCatch({
+        cd <- as.data.frame(SummarizedExperiment::colData(x))
+        stats::model.matrix(DESeq2::design(x), cd)
+    }, error = function(e) NULL)
+    if (is.null(X) || nrow(X) != nrow(design)) return(invisible(TRUE))
+    ## is `design` inside the span of X?  normal equations on a full-rank X
+    fitted <- tryCatch({
+        X %*% solve(crossprod(X), crossprod(X, design))
+    }, error = function(e) NULL)
+    if (is.null(fitted)) return(invisible(TRUE))
+    same <- max(abs(fitted - design)) < 1e-8
+    if (!same) {
+        warning("'design' differs from design(x): the variance-stabilising transform uses ",
+                "design(x) while the ranking uses 'design'. Refit the DESeqDataSet with the ",
+                "intended design (design(dds) <- ...; DESeq(dds)) or pass a counts matrix ",
+                "so the transform can use 'design'.", call. = FALSE)
+    }
+    invisible(same)
+}
+
 ## ---- ssGSEA ----------------------------------------------------------------
 
 #' Single-sample GSEA scores
@@ -281,10 +356,25 @@ ssgsea_scores <- function(E, gene_sets, exponent = 1, min_size = 10L, max_size =
 #' like the weakest available choice and it is the one the benchmark supported:
 #' ranking by a moderated t or by DESeq2's Wald statistic was no better under
 #' uniform or heterogeneous effects, and materially worse when the affected genes
-#' were the noisier ones (recall 0.759 for Wald against 0.965 for the mean
-#' difference). GSEA's statistic already equalises genes by rank, so layering a
-#' variance weight on top discards real signal at the extremes rather than
-#' adding power.
+#' were the noisier ones (recall 0.826 for Wald against 0.979 for the mean
+#' difference under an eightfold dispersion multiplier; across a 1x/2x/4x series
+#' the Wald statistic falls 0.995 to 0.950 while the mean difference stays flat).
+#' GSEA's statistic already equalises genes by rank, so layering a variance
+#' weight on top discards real signal at the extremes rather than adding power.
+#'
+#' \strong{Which column may be the contrast.} A design column encodes a
+#' comparison only when it is not constant and not a group indicator under
+#' cell-means coding. The intercept is rejected because ranking by it orders
+#' genes by mean expression, which turns the analysis into "highly expressed
+#' pathways"; a column of `~ 0 + condition` is rejected for the same reason,
+#' since its coefficient is one group's mean rather than a difference. A
+#' continuous column (a dose slope, say) is allowed.
+#'
+#' \strong{The transform uses design(x), the ranking uses \code{design}.} When
+#' `x` is a `DESeqDataSet`, `vst(blind = FALSE)` reads the design stored in the
+#' object, while the ranking reads the `design` argument. If the two differ the
+#' call warns rather than blending two models: refit the object with the intended
+#' design, or pass a counts matrix so the transform can use `design`.
 #'
 #' \strong{What the design is used for.} For a two-group contrast the ranking is
 #' the group mean difference. For a design with nuisance terms it is the contrast
@@ -300,7 +390,9 @@ ssgsea_scores <- function(E, gene_sets, exponent = 1, min_size = 10L, max_size =
 #'   `rownames(x)`.
 #' @param design for `dsea()`: an `n x p` design matrix from `model.matrix()`,
 #'   row-aligned with the samples. Must be full rank.
-#' @param contrast a column name or index of `design`.
+#' @param contrast a column name or index of `design`. Defaults to the only
+#'   non-intercept column of a two-column design; a wider design must name the
+#'   contrast explicitly, because the useful column cannot be guessed.
 #' @param transform `"vst"` (default) or `"rlog"`; `dsea_scores()` also accepts
 #'   `"logcpm"`.
 #' @param min_size,max_size gene set size limits, applied to the overlap with the
@@ -316,7 +408,9 @@ ssgsea_scores <- function(E, gene_sets, exponent = 1, min_size = 10L, max_size =
 #' output, so the table can be filtered and plotted like any other GSEA result.
 #'
 #' `dsea_scores()` returns a list with `scores` (gene sets by samples) and `meta`
-#' recording the transform and scorer settings.
+#' recording the transform and scorer settings. `meta$set_sizes` reports the
+#' number of members actually scored, after intersecting with the data, and
+#' `meta$raw_set_sizes` the input size, so the two can be compared.
 #'
 #' @examples
 #' \dontrun{
@@ -330,13 +424,29 @@ ssgsea_scores <- function(E, gene_sets, exponent = 1, min_size = 10L, max_size =
 #' }
 #' @seealso \code{\link{gsea}}, \code{\link{ssgsea_scores}}
 #' @export
-dsea <- function(x, gene_sets, design, contrast = 1L,
+dsea <- function(x, gene_sets, design, contrast = NULL,
                  transform = c("vst", "rlog"),
                  min_size = 10L, max_size = 500L, ...) {
     transform <- match.arg(transform)
     counts <- .dsea_counts(x)
     design <- .dsea_check_design(design, colnames(counts))
-    idx <- .dsea_resolve_one(contrast, design)
+    ## The default is only safe in the two-column case, and even there it has to
+    ## be the non-intercept column.  Anything wider requires the caller to say
+    ## which coefficient is the contrast; guessing produced expression-level
+    ## rankings (see .dsea_check_contrast).
+    if (is.null(contrast)) {
+        if (ncol(design) != 2L) {
+            stop("'contrast' must be supplied when 'design' has ", ncol(design),
+                 " columns. Name or index the column that encodes the comparison; available: ",
+                 paste(colnames(design), collapse = ", "), call. = FALSE)
+        }
+        contrast <- 2L
+    }
+    idx <- .dsea_check_contrast(design, contrast)
+    .dsea_check_design_agreement(x, design)
+    ## The same gene-set validation dsea_scores() applies, so both entry points
+    ## fail on the same inputs rather than one of them failing later or not at all.
+    gene_sets <- .dsea_expand_sets(gene_sets)
     E <- .dsea_transform(x, transform, counts)$E
 
     ## Rank by the contrast rather than by a marginal group difference: with
@@ -397,13 +507,20 @@ dsea_scores <- function(x, gene_sets, transform = c("vst", "rlog", "logcpm"),
         message(sprintf("dsea_scores: %d of %d gene sets dropped (size outside [%d, %d] after intersecting with the data).",
                         length(dropped), length(gene_sets), min_size, max_size))
     }
+    ## set_sizes must report what the size filter and the scorer ACTUALLY used,
+    ## which is the overlap with the data, not the raw input size.  A set of 60
+    ## identifiers of which 20 are present scores 20 genes; recording 60 makes
+    ## the metadata unable to explain the result it accompanies.  The raw size is
+    ## kept alongside so the gap stays visible.
+    kept <- rownames(S)
     meta <- list(
         transform = transform, transform_args = tr$args,
         scorer = "ssgsea", exponent = exponent,
         n_input_sets = length(gene_sets), n_scored_sets = nrow(S),
         dropped_sets = length(dropped),
         dropped_fraction = length(dropped) / length(gene_sets),
-        set_sizes = lengths(gene_sets[rownames(S)]),
+        set_sizes = lengths(lapply(gene_sets[kept], intersect, rownames(tr$E))),
+        raw_set_sizes = lengths(gene_sets[kept]),
         min_size = min_size, max_size = max_size,
         vst_version = as.character(utils::packageVersion("DESeq2"))
     )

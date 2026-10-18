@@ -10,6 +10,23 @@
 - add `as_ranked()` and `as_genes()` adapters for `DESeqResults` and fitted
   `DESeqDataSet` objects, providing ranked statistics for `gsea()` and
   significant-gene vectors for `ora()`; `DESeq2` is a suggested dependency
+- `dsea()` no longer guesses the contrast: `contrast = NULL` (the default) takes
+  the non-intercept column of a two-column design and requires an explicit choice
+  for a wider one; the intercept and cell-means columns (`~ 0 + condition`) are
+  rejected with an explanation, because ranking by either orders genes by mean
+  expression and reports highly expressed pathways instead of differentially
+  enriched ones
+- `dsea()` warns when a `DESeqDataSet`'s stored design differs from the `design`
+  argument, since the variance-stabilising transform reads the former while the
+  ranking reads the latter
+- `dsea()` applies the same gene-set validation as `dsea_scores()`, so a
+  duplicated identifier or an empty set fails at either entry point
+- `dsea_scores()` reports `set_sizes` as the members actually scored after
+  intersecting with the data, and adds `raw_set_sizes` for the input size
+- remove the golden-reference script and data left over from the retired
+  `camera`/`roast`/`fry` engines, and the design note for the never-implemented
+  `dsea_nb` set test; both shipped material describing functions that no longer
+  exist
 
 # enrichit 0.2.6
 

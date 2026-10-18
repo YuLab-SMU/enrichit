@@ -9,7 +9,7 @@ dsea(
   x,
   gene_sets,
   design,
-  contrast = 1L,
+  contrast = NULL,
   transform = c("vst", "rlog"),
   min_size = 10L,
   max_size = 500L,
@@ -35,7 +35,9 @@ dsea_scores(
 \item{design}{for \code{dsea()}: an \verb{n x p} design matrix from \code{model.matrix()},
 row-aligned with the samples. Must be full rank.}
 
-\item{contrast}{a column name or index of \code{design}.}
+\item{contrast}{a column name or index of \code{design}. Defaults to the only
+non-intercept column of a two-column design; a wider design must name the
+contrast explicitly, because the useful column cannot be guessed.}
 
 \item{transform}{\code{"vst"} (default) or \code{"rlog"}; \code{dsea_scores()} also accepts
 \code{"logcpm"}.}
@@ -49,12 +51,15 @@ genes actually present.}
 \code{\link[=ssgsea_scores]{ssgsea_scores()}}.}
 }
 \value{
-\code{dsea()} returns the data.frame from \code{\link[=gsea]{gsea()}} with the tested contrast added as
-a column, so the pathway table can be filtered and plotted exactly like any
-other GSEA result.
+\code{dsea()} returns the data.frame from \code{\link[=gsea]{gsea()}}, sorted by p-value, with two
+columns added: \code{padj}, the Benjamini-Hochberg adjusted p-value, and
+\code{contrast}, the design column that was tested. Everything else is GSEA's own
+output, so the table can be filtered and plotted like any other GSEA result.
 
 \code{dsea_scores()} returns a list with \code{scores} (gene sets by samples) and \code{meta}
-recording the transform and scorer settings.
+recording the transform and scorer settings. \code{meta$set_sizes} reports the
+number of members actually scored, after intersecting with the data, and
+\code{meta$raw_set_sizes} the input size, so the two can be compared.
 }
 \description{
 \code{dsea()} takes counts and a design and returns GSEA results for a contrast:
@@ -68,10 +73,25 @@ mean transformed expression between the two sides of the contrast. That looks
 like the weakest available choice and it is the one the benchmark supported:
 ranking by a moderated t or by DESeq2's Wald statistic was no better under
 uniform or heterogeneous effects, and materially worse when the affected genes
-were the noisier ones (recall 0.759 for Wald against 0.965 for the mean
-difference). GSEA's statistic already equalises genes by rank, so layering a
-variance weight on top discards real signal at the extremes rather than
-adding power.
+were the noisier ones (recall 0.826 for Wald against 0.979 for the mean
+difference under an eightfold dispersion multiplier; across a 1x/2x/4x series
+the Wald statistic falls 0.995 to 0.950 while the mean difference stays flat).
+GSEA's statistic already equalises genes by rank, so layering a variance
+weight on top discards real signal at the extremes rather than adding power.
+
+\strong{Which column may be the contrast.} A design column encodes a
+comparison only when it is not constant and not a group indicator under
+cell-means coding. The intercept is rejected because ranking by it orders
+genes by mean expression, which turns the analysis into "highly expressed
+pathways"; a column of \code{~ 0 + condition} is rejected for the same reason,
+since its coefficient is one group's mean rather than a difference. A
+continuous column (a dose slope, say) is allowed.
+
+\strong{The transform uses design(x), the ranking uses \code{design}.} When
+\code{x} is a \code{DESeqDataSet}, \code{vst(blind = FALSE)} reads the design stored in the
+object, while the ranking reads the \code{design} argument. If the two differ the
+call warns rather than blending two models: refit the object with the intended
+design, or pass a counts matrix so the transform can use \code{design}.
 
 \strong{What the design is used for.} For a two-group contrast the ranking is
 the group mean difference. For a design with nuisance terms it is the contrast
