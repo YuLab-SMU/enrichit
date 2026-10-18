@@ -311,7 +311,7 @@ ssgsea_scores <- function(E, gene_sets, exponent = 1, min_size = 10L, max_size =
     if (is.null(rownames(E)) || is.null(colnames(E))) {
         stop("'E' must have gene row names and sample column names.", call. = FALSE)
     }
-    gene_sets <- lapply(.dsea_expand_sets(gene_sets), intersect, rownames(E))
+    gene_sets <- filter_gene_sets(.dsea_expand_sets(gene_sets), rownames(E))
     keep <- lengths(gene_sets) >= min_size & lengths(gene_sets) <= max_size
     gene_sets <- gene_sets[keep]
     if (length(gene_sets) == 0L) {
@@ -519,7 +519,7 @@ dsea_scores <- function(x, gene_sets, transform = c("vst", "rlog", "logcpm"),
         n_input_sets = length(gene_sets), n_scored_sets = nrow(S),
         dropped_sets = length(dropped),
         dropped_fraction = length(dropped) / length(gene_sets),
-        set_sizes = lengths(lapply(gene_sets[kept], intersect, rownames(tr$E))),
+        set_sizes = lengths(filter_gene_sets(gene_sets[kept], rownames(tr$E))),
         raw_set_sizes = lengths(gene_sets[kept]),
         min_size = min_size, max_size = max_size,
         vst_version = as.character(utils::packageVersion("DESeq2"))

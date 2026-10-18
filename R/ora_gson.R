@@ -93,7 +93,7 @@ ora_gson <- function(gene,
     ## `universe != NULL` alone is not the right test; `extID` is shorter than
     ## the annotated set only when a universe actually removed genes.
     if (!is.null(universe) && length(extID) < length(annotatedGenes)) {
-        geneSets <- lapply(geneSets, intersect, extID)
+        geneSets <- filter_gene_sets(geneSets, extID)
     }
     
     # Filter by size

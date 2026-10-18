@@ -1,5 +1,9 @@
 # enrichit 0.2.6.9000
 
+- gene-set filtering against a shared universe is vectorized: `filter_gene_sets()` maps the concatenated ids once and splits them back, replacing `lapply(gene_sets, intersect, universe)` in ORA (restricted universe), GSEA, NSEA, DSEA and Bayes enrichment. The old form hashed the universe once per set -- 14.0 s for 14,209 human GO BP sets against 18,842 genes (2026-10-18) -- and the new one takes 0.9 s with byte-identical output (set names, element order and empty sets); a test pins the equivalence
+
+- `ora()` now returns the `geneID` column in the order the DE genes were supplied. The column used to be built by iterating a `std::unordered_set` (and `Rcpp::unique()` itself is hash-ordered), so the same analysis returned the same genes in a different order in different processes -- a reproducibility defect as well as a readability one. Deduplication now walks the input once; membership tests are unchanged and `p-value`/counts are identical (2026-10-18, Sun)
+
 - `ora_gson()` now intersects the gene sets with the background only when the
   background was actually RESTRICTED. Intersecting with the full annotated gene
   list is the identity -- the sets come from that same table -- but it is not

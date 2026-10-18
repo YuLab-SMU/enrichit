@@ -259,3 +259,18 @@ test_that("ora_gson still intersects when the universe removes annotated genes",
   expect_equal(full@result$ID, bare@result$ID)
   expect_equal(full@result$pvalue, bare@result$pvalue, tolerance = 1e-12)
 })
+
+## -- geneID order must be reproducible --------------------------------------
+## `ora_cpp()` used to build the geneID column by iterating a
+## std::unordered_set, so the same input returned the same genes in a different
+## order in different processes (measured 2026-10-18). It now walks the input
+## gene order, which is deterministic and easier to read.
+test_that("ora_cpp keeps the input gene order in geneID", {
+    genes <- c("g3", "g1", "g4")
+    sets <- list(s1 = c("g1", "g2", "g3", "g4"), s2 = c("g1", "g4"))
+    out <- enrichit:::ora_cpp(genes, c("g1", "g2", "g3", "g4"), sets, c("s1", "s2"))
+    expect_equal(out$geneID, c("g3/g1/g4", "g1/g4"))
+    ## And it is stable across repeated calls in one process.
+    again <- enrichit:::ora_cpp(genes, c("g1", "g2", "g3", "g4"), sets, c("s1", "s2"))
+    expect_identical(out$geneID, again$geneID)
+})

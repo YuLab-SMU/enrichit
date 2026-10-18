@@ -21,11 +21,21 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
     Rcpp::CharacterVector gene_id(n_sets);
     Rcpp::IntegerVector universe_size(n_sets);
     
-    // Convert gene to hash set for fast lookup
-    Rcpp::CharacterVector de_genes = Rcpp::unique(gene);
-    std::unordered_set<std::string> de_set;
-    for (int i = 0; i < de_genes.size(); ++i) {
-        de_set.insert(Rcpp::as<std::string>(de_genes[i]));
+    // Unique DE genes, in input order. Two ordering traps live here:
+    // `Rcpp::unique()` does not preserve input order (it is hash-based), and
+    // iterating a std::unordered_set is not stable across processes. Together
+    // they made the same analysis return geneID genes in a different order in
+    // different processes (measured 2026-10-18). Deduplicate explicitly while
+    // walking the input, and build geneID from that vector.
+    std::vector<std::string> de_genes;
+    {
+        std::unordered_set<std::string> seen;
+        for (int i = 0; i < gene.size(); ++i) {
+            std::string g = Rcpp::as<std::string>(gene[i]);
+            if (seen.insert(g).second) {
+                de_genes.push_back(g);
+            }
+        }
     }
     
     // Convert universe to hash set
@@ -39,8 +49,8 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
     int N = bg_set.size();
     // DE genes in universe
     int K = 0;
-    for (const auto& gene : de_set) {
-        if (bg_set.find(gene) != bg_set.end()) {
+    for (int i = 0; i < (int)de_genes.size(); ++i) {
+        if (bg_set.find(de_genes[i]) != bg_set.end()) {
             ++K;
         }
     }
@@ -70,7 +80,11 @@ Rcpp::DataFrame ora(const Rcpp::CharacterVector& gene,
         std::stringstream ss;
         bool first = true;
         
-        for (const auto& gene : de_set) {
+        // Walk the input gene order, not the hash set, so the result is
+        // reproducible across processes and the ID column follows the order
+        // the caller supplied.
+        for (int j = 0; j < (int)de_genes.size(); ++j) {
+            const std::string& gene = de_genes[j];
             if (gs_bg.find(gene) != gs_bg.end()) {
                 ++count;
                 if (!first) ss << "/";

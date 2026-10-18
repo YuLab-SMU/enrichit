@@ -259,7 +259,7 @@ bayes_summary <- function(x, active = FALSE, n = Inf) {
         stop("No observed genes overlap the analysis universe.", call. = FALSE)
     }
 
-    gene_sets <- lapply(gene_sets, function(gs) intersect(unique(gs), universe))
+    gene_sets <- filter_gene_sets(gene_sets, universe)
     keep <- vapply(gene_sets, length, integer(1)) > 0L
     gene_sets <- gene_sets[keep]
 

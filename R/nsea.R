@@ -304,7 +304,7 @@ build_nsea_result <- function(base_result,
     obs <- sort(obs, decreasing = TRUE)
     
     ## intersect gene sets with the ranked list and apply size filters
-    gs <- lapply(gene_sets, intersect, names(obs))
+    gs <- filter_gene_sets(gene_sets, names(obs))
     sizes <- vapply(gs, length, integer(1))
     keep <- sizes >= minGSSize & sizes <= maxGSSize
     gs <- gs[keep]
