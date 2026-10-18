@@ -154,3 +154,50 @@ test_that("ORA results carry a Fisher odds ratio (#501)", {
         }
     }
 })
+
+## -- skipping the identity intersect must not change any result -------------
+## Without a universe, `extID` is `unique(gsid2gene$gene)` and every gene set
+## already comes from that table, so the old unconditional
+## `lapply(geneSets, intersect, extID)` was an identity operation -- but it
+## hashed extID once per set (20 s for the 14,209 human GO BP sets, measured
+## 2026-10-18) and ORA runs once per cluster. The intersect is now conditional
+## on a universe being supplied. This test pins the equivalence: passing the
+## full annotated gene list as `universe` (which still takes the intersection
+## branch) must give exactly the same result as passing none.
+test_that("ora_gson without universe equals ora_gson with the full gene universe", {
+  gsid2gene <- data.frame(
+    gsid = c("set1", "set1", "set2", "set2", "set3", "set3", "set4", "set4"),
+    gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4", "Gene5", "Gene1", "Gene4"),
+    stringsAsFactors = FALSE
+  )
+  gsid2name <- data.frame(
+    gsid = c("set1", "set2", "set3", "set4"),
+    name = c("Set 1", "Set 2", "Set 3", "Set 4"),
+    stringsAsFactors = FALSE
+  )
+  gson_obj <- gson::gson(
+    gsid2gene = gsid2gene,
+    gsid2name = gsid2name,
+    species = "test",
+    gsname = "test",
+    version = "test",
+    accessed_date = as.character(Sys.Date()),
+    keytype = "UNKNOWN"
+  )
+  args <- list(
+    gene = c("Gene1", "Gene2"),
+    pvalueCutoff = 1,
+    pAdjustMethod = "BH",
+    minGSSize = 1,
+    maxGSSize = 10,
+    qvalueCutoff = 1,
+    gson = gson_obj
+  )
+  no_universe <- do.call(ora_gson, args)
+  explicit <- do.call(ora_gson, c(args, list(universe = unique(gsid2gene$gene))))
+
+  expect_equal(no_universe@result$ID, explicit@result$ID)
+  expect_equal(no_universe@result$pvalue, explicit@result$pvalue, tolerance = 1e-12)
+  expect_equal(no_universe@result$p.adjust, explicit@result$p.adjust, tolerance = 1e-12)
+  expect_equal(no_universe@result$Count, explicit@result$Count)
+})

@@ -82,8 +82,16 @@ ora_gson <- function(gene,
 
     # Prepare Gene Sets
     geneSets <- split(gsid2gene$gene, gsid2gene$gsid)
-    # Intersect with universe
-    geneSets <- lapply(geneSets, intersect, extID)
+    ## Intersect with the universe only when one was supplied. Without a
+    ## universe, `extID` is `unique(gsid2gene$gene)` and every set comes from
+    ## that same table, so the intersection is an identity operation -- but not
+    ## a free one: base `intersect()` hashes `extID` once per set, measured at
+    ## 20 s for the 14,209 human GO BP sets (PBMC 10k, 2026-10-18), and ORA runs
+    ## once per cluster in compareCluster(). With a universe the intersection is
+    ## still required, because `extID` may have been restricted by it above.
+    if (!is.null(universe)) {
+        geneSets <- lapply(geneSets, intersect, extID)
+    }
     
     # Filter by size
     idx <- get_geneSet_index(geneSets, minGSSize, maxGSSize)
