@@ -133,3 +133,74 @@ test_that("bayes_enrich validates inputs", {
         "Run bayes_enrich"
     )
 })
+
+test_that("bayes_enrich warns when no term reaches the posterior cutoff", {
+    # reproduce the original dead-default regime: gene sets large relative to
+    # the hit list, scored with the old false negative rate
+    gene_sets <- lapply(seq_len(6), function(i) {
+        paste0("g", seq.int((i - 1) * 50 + 1, i * 50))
+    })
+    names(gene_sets) <- paste0("T", 1:6)
+    # ten hits in each of the first three sets, none in the rest
+    gene <- as.character(unlist(lapply(c(0, 50, 100), function(o) paste0("g", o + 1:10))))
+    universe <- paste0("g", 1:2000)
+    x <- make_enrich_result(gene_sets, gene, universe)
+
+    expect_warning(
+        y <- bayes_enrich(x, n_terms = Inf, false_negative = 0.1,
+                          n_iter = 200, burnin = 50, seed = 3),
+        "no candidate term reached the posterior cutoff"
+    )
+    expect_true(sum(as.data.frame(y)$bayes_active, na.rm = TRUE) == 0L)
+
+    # the same input with the realistic rate must select terms and stay silent
+    expect_silent(
+        z <- bayes_enrich(x, n_terms = Inf, false_negative = 0.9,
+                          n_iter = 200, burnin = 50, seed = 3)
+    )
+    expect_true(sum(as.data.frame(z)$bayes_active, na.rm = TRUE) > 0L)
+})
+
+test_that("unmodeled rows keep bayes_active = NA, not FALSE", {
+    gene_sets <- lapply(seq_len(8), function(i) {
+        paste0("g", seq.int((i - 1) * 10 + 1, i * 10))
+    })
+    names(gene_sets) <- paste0("T", 1:8)
+    gene <- paste0("g", c(1:5, 11:15, 21:25))
+    universe <- paste0("g", 1:200)
+    # all eight terms are part of the reported result, but only five are
+    # candidates, so three rows must come back without a posterior
+    x <- make_enrich_result(gene_sets, gene, universe,
+                            pvalueCutoff = 1, qvalueCutoff = 1)
+
+    y <- suppressWarnings(bayes_enrich(x, candidate = "all", n_terms = 5,
+                                       n_iter = 200, burnin = 50, seed = 2))
+    res <- as.data.frame(y)
+
+    unmodeled <- is.na(res$posterior)
+    expect_true(any(unmodeled))                     # the test premise
+    expect_true(all(is.na(res$bayes_active[unmodeled])))
+    expect_true(all(!is.na(res$bayes_active[!unmodeled])))
+
+    # bayes_summary(active = TRUE) must not surface unmodeled rows
+    active <- bayes_summary(y, active = TRUE)
+    expect_true(all(!is.na(active$bayes_active)))
+    expect_true(all(active$posterior >= 0.5))
+})
+
+test_that("bayes_enrich rejects a burnin/thin combination that keeps no sample", {
+    gene_sets <- list(T1 = c("g1", "g2", "g3"))
+    x <- make_enrich_result(gene_sets, gene = c("g1", "g2"),
+                            universe = paste0("g", 1:10))
+
+    # passes the old checks (burnin < n_iter, thin >= 1) yet leaves no
+    # post-burn-in sample, which used to divide by zero and return NaN
+    expect_error(
+        bayes_enrich(x, n_terms = Inf, n_iter = 101, burnin = 100, thin = 2),
+        "exceeds n_iter"
+    )
+    # one iteration later and a sample is kept again
+    expect_silent(
+        bayes_enrich(x, n_terms = Inf, n_iter = 102, burnin = 100, thin = 2, seed = 1)
+    )
+})

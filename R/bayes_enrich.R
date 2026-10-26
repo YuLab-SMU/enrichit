@@ -25,7 +25,12 @@
 #' @param prior Prior probability that a term is active.
 #' @param false_positive Probability of observing a gene not covered by active
 #'   terms.
-#' @param false_negative Probability of missing a gene covered by active terms.
+#' @param false_negative Probability of missing a gene covered by active
+#'   terms. ORA hit lists contain only a fraction of the genes of each active
+#'   program, so a realistic scale is close to 1 (default 0.9). The previous
+#'   default (0.1) assumed the hits cover most genes of the active programs,
+#'   which pathway-sized gene sets never satisfy: it pushed the posterior of
+#'   every candidate to 0 on realistic KEGG/Reactome data.
 #' @param n_iter Total number of MCMC iterations.
 #' @param burnin Number of initial iterations discarded.
 #' @param thin Keep one sample every `thin` iterations after burn-in.
@@ -43,7 +48,7 @@ bayes_enrich <- function(x,
                          by = "p.adjust",
                          prior = 0.1,
                          false_positive = 0.01,
-                         false_negative = 0.1,
+                         false_negative = 0.9,
                          n_iter = 5000,
                          burnin = 1000,
                          thin = 1,
@@ -120,6 +125,19 @@ bayes_enrich <- function(x,
         seed = seed,
         verbose = verbose
     )
+
+    if (!any(posterior >= posterior_cutoff)) {
+        warning(paste0(
+            "bayes_enrich(): no candidate term reached the posterior cutoff (",
+            "posterior_cutoff = ", posterior_cutoff, "). ",
+            "`false_negative` is the probability that a gene covered by an ",
+            "active program is missing from the hit list (currently ",
+            false_negative, "). If the candidates genuinely overlap the hits, ",
+            "raise it closer to 1 and/or lower `posterior_cutoff`; if no ",
+            "candidate overlaps the hits, the input itself has no signal and ",
+            "the prior cannot create one."
+        ), call. = FALSE)
+    }
 
     active <- posterior >= posterior_cutoff
     odds <- posterior / pmax(1 - posterior, .Machine$double.eps)
@@ -217,6 +235,17 @@ bayes_summary <- function(x, active = FALSE, n = Inf) {
     }
     if (n_iter <= 1L || burnin < 0L || burnin >= n_iter || thin < 1L) {
         stop("Require n_iter > 1, 0 <= burnin < n_iter, and thin >= 1.",
+             call. = FALSE)
+    }
+    ## `burnin` and `thin` together can leave not a single post-burn-in sample
+    ## (n_iter = 101, burnin = 100, thin = 2 satisfies the checks above). The
+    ## sampler then divides by zero and every posterior becomes NaN, which
+    ## surfaced much later as "missing value where TRUE/FALSE needed".
+    first_kept <- burnin + thin
+    if (first_kept > n_iter) {
+        stop("burnin + thin (", burnin, " + ", thin, " = ", first_kept,
+             ") exceeds n_iter (", n_iter, "), so no sample is kept after ",
+             "burn-in. Increase n_iter or lower burnin / thin.",
              call. = FALSE)
     }
 }
@@ -356,6 +385,12 @@ bayes_summary <- function(x, active = FALSE, n = Inf) {
         }
     }
 
+    if (n_kept == 0L) {
+        ## unreachable after the argument check, kept as a guard so a future
+        ## change to the keeping rule cannot silently return all-NaN posteriors
+        stop("The sampler kept no post-burn-in samples; check burnin, thin and n_iter.",
+             call. = FALSE)
+    }
     kept / n_kept
 }
 

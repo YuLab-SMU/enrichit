@@ -109,3 +109,36 @@ test_that("summary delegates to as.data.frame for enrichResult and gseaResult", 
     "deprecated"
   )
 })
+
+test_that("as.data.frame() keeps rows with NA pvalue/p.adjust intact", {
+    gene_sets <- list(A = paste0("g", 1:10), B = paste0("g", 1:10), C = paste0("g", 50:60))
+    make <- function(pv, pad) {
+        new("enrichResult",
+            result = data.frame(
+                ID = names(gene_sets), Description = names(gene_sets),
+                GeneRatio = "5/5", BgRatio = "10/200", RichFactor = 1,
+                FoldEnrichment = 1, zScore = 0,
+                pvalue = pv, p.adjust = pad, qvalue = pad,
+                geneID = c("g1/g2", "g3/g4", "g50"), Count = c(2L, 2L, 1L),
+                stringsAsFactors = FALSE),
+            pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2,
+            organism = "UNKNOWN", ontology = "UNKNOWN", gene = paste0("g", 1:5),
+            keytype = "UNKNOWN", universe = paste0("g", 1:200),
+            geneSets = gene_sets, readable = FALSE)
+    }
+
+    # `d[c(NA, TRUE), ]` keeps the row but blanks every column, so a term with
+    # NA p.adjust used to come back as a row whose ID was NA
+    out <- as.data.frame(make(c(0.01, 0.02, NA), c(0.01, NA, 0.03)))
+    expect_false(any(is.na(out$ID)))
+    expect_identical(out$ID, "A")
+
+    # ordinary cutoff filtering is unchanged
+    kept <- as.data.frame(make(c(0.01, 0.04, 0.5), c(0.01, 0.03, 0.4)))
+    expect_identical(kept$ID, c("A", "B"))
+
+    # the qvalue branch already skipped itself on NA and still does
+    z <- make(c(0.01, 0.02, 0.03), c(0.01, 0.02, 0.03))
+    z@result$qvalue <- c(0.01, NA, NA)
+    expect_equal(nrow(as.data.frame(z)), 3L)
+})

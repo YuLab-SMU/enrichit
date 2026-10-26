@@ -272,17 +272,28 @@ get_enriched <- function(object) {
 
     Over <- object@result
 
+    ## Subsetting with a logical that carries NA keeps the row but blanks every
+    ## column (`d[c(NA, TRUE), ]` returns one all-NA row and one real row), so a
+    ## term whose pvalue or p.adjust is NA came back as a corrupted row with
+    ## ID = NA. `which()` drops the NA positions and leaves a clean row index.
+    keep_rows <- function(df, cond) {
+        if (length(cond) == 0L) {
+            return(df)
+        }
+        df[which(cond), , drop = FALSE]
+    }
+
     pvalueCutoff <- object@pvalueCutoff
     if (length(pvalueCutoff) != 0) {
-        Over <- Over[ Over$pvalue <= pvalueCutoff, ]
-        Over <- Over[ Over$p.adjust <= pvalueCutoff, ]
+        Over <- keep_rows(Over, Over$pvalue <= pvalueCutoff)
+        Over <- keep_rows(Over, Over$p.adjust <= pvalueCutoff)
     }
 
     qvalueCutoff <- object@qvalueCutoff
     if (length(qvalueCutoff) != 0) {
         if (! any(is.na(Over$qvalue))) {
             if (length(qvalueCutoff) > 0)
-                Over <- Over[ Over$qvalue <= qvalueCutoff, ]
+                Over <- keep_rows(Over, Over$qvalue <= qvalueCutoff)
         }
     }
 
