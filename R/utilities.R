@@ -290,10 +290,40 @@ get_enriched <- function(object) {
     }
 
     qvalueCutoff <- object@qvalueCutoff
-    if (length(qvalueCutoff) != 0) {
-        if (! any(is.na(Over$qvalue))) {
-            if (length(qvalueCutoff) > 0)
-                Over <- keep_rows(Over, Over$qvalue <= qvalueCutoff)
+    ## `nrow(Over) > 0L` is load-bearing: on an empty frame the two all-NA
+    ## checks below are vacuously TRUE, so without it a result whose terms were
+    ## all filtered out by pvalueCutoff would print "qvalue could not be
+    ## estimated for any term" -- a warning about a column that was never the
+    ## reason there is nothing to show. show(), dim(), head(), tail() and
+    ## as.data.frame() all route through here, so that would fire on every
+    ## inspect of a no-hit result.
+    if (length(qvalueCutoff) != 0 && nrow(Over) > 0L) {
+        qv <- Over$qvalue
+        ## Row-wise q-value filter. Rows whose own qvalue is NA bypass this
+        ## cutoff and keep the fate pvalueCutoff already gave them: dropping
+        ## them would hide terms the user asked to see, and the old
+        ## "one NA anywhere disables the cutoff for every term" behaviour made
+        ## a single unestimable qvalue leak unfiltered rows into the result
+        ## with no message (clusterProfiler#710, #584, #614, #332).
+        if (is.null(qv)) {
+            warning(
+                "the result has no `qvalue` column; qvalueCutoff = ",
+                qvalueCutoff, " was not applied. Filter on p.adjust instead."
+            )
+        } else if (all(is.na(qv))) {
+            warning(
+                "qvalue could not be estimated for any term; qvalueCutoff = ",
+                qvalueCutoff, " was not applied. Filter on p.adjust instead."
+            )
+        } else {
+            if (any(is.na(qv))) {
+                warning(
+                    "qvalue is NA for ", sum(is.na(qv)), " of ", nrow(Over),
+                    " terms; those rows bypass qvalueCutoff (their pvalue/p.adjust",
+                    " filters still apply). Use pvalueCutoff to filter them."
+                )
+            }
+            Over <- keep_rows(Over, is.na(qv) | qv <= qvalueCutoff)
         }
     }
 

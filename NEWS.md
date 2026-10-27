@@ -1,4 +1,20 @@
-# enrichit 0.2.7
+# enrichit 0.2.7.001
+
+- `get_enriched()` applies `qvalueCutoff` **row by row** instead of switching it off wholesale
+  when any q-value is `NA`. The old guard (`if (!any(is.na(...)))`) meant a single term whose
+  Storey q-value could not be estimated leaked every unfiltered row into the result with no
+  message -- the user set `qvalueCutoff = 0.2` and got back terms with q = 0.9
+  (clusterProfiler#710, #584, #614, #332). Now: a row with a q-value is kept only when it passes;
+  a row with an `NA` q-value bypasses this cutoff (its `pvalue`/`p.adjust` filters still apply)
+  with a warning naming the count; an all-`NA` column disables the cutoff with a warning pointing
+  at `p.adjust`; a result with no `qvalue` column says that instead of blaming estimation. The
+  empty-result case is skipped explicitly -- on a zero-row frame both all-`NA` tests are vacuously
+  TRUE, so a result whose terms were all filtered out by `pvalueCutoff` would otherwise warn about
+  q-value estimation on every `show()`, `dim()`, `head()`, `tail()` and `as.data.frame()`, since
+  all of them route through here. The filter is reached from the `enrichResult` methods only;
+  `gseaResult` is filtered at construction in `gsea_gson()`, and the `gseaResult` test covers the
+  shared helper rather than a live path. The same row-wise rule replaces the wholesale guard in
+  clusterProfiler's `enrichDAVID()`, which carried a copy of it (2026-10-27, Tue)
 
 - `bayes_enrich()`: default `false_negative` is 0.9, not 0.1. The old value
   assumed an ORA hit list holds 90% of each active program's genes; a real KEGG
