@@ -222,19 +222,27 @@ ora_gson <- function(gene,
 
     # Reorder columns
     expected_cols <- c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor", "FoldEnrichment", "oddsRatio", "zScore", "pvalue", "p.adjust", "qvalue", "geneID", "Count")
-    
+
     # Ensure all expected columns exist
     missing_cols <- setdiff(expected_cols, names(ora_res))
     if (length(missing_cols) > 0) {
-        warning("Missing columns in ORA result: ", paste(missing_cols, collapse=", "), 
+        warning("Missing columns in ORA result: ", paste(missing_cols, collapse=", "),
                 ". Filling with NA. (Note: 'qvalue' may be missing if p-value distribution does not allow q-value calculation)")
         for (col in missing_cols) {
             ora_res[[col]] <- NA
         }
     }
 
-    #other_cols <- setdiff(names(ora_res), expected_cols)
-    ora_res <- ora_res[, expected_cols]
+    ## Keep the denominators the engine already computed. `DESize` is the
+    ## GeneRatio denominator (query genes inside the universe) and
+    ## `UniverseSize` the BgRatio denominator (universe ∩ annotated genes);
+    ## both were calculated here and then dropped, which is why four users in a
+    ## row (clusterProfiler#703, #523, #618, #723) had to ask what the
+    ## denominators of the "20/207" strings actually are. `SetSize` stays too:
+    ## RichFactor divides by it, so all three ratios are now checkable from the
+    ## table itself. GSEA's gsea_gson() has always kept its extra columns.
+    extra_cols <- intersect(c("SetSize", "DESize", "UniverseSize"), names(ora_res))
+    ora_res <- ora_res[, c(expected_cols, extra_cols)]
     
     # Sort by pvalue
     ora_res <- ora_res[order(ora_res$pvalue), ]

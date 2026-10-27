@@ -1,4 +1,21 @@
-# enrichit 0.2.7.002
+# enrichit 0.2.7.003
+
+- NSEA's whole-pipeline permutation null can no longer be poisoned by a skipped permutation. The
+  null matrix was initialised to `0` and a degenerate permutation was skipped with `next`, leaving
+  a zero in the null that then counted against every pathway while the p-value denominator stayed
+  at `nPerm` -- a bias toward non-significance if the path were ever reachable. The matrix is now
+  initialised to `NA`, filled sequentially, the denominator counts only permutations that ran
+  (`nPerm` reports that count), and an all-degenerate loop is an error instead of a null of
+  nothing. `sum(geneList[common])` is invariant under label permutation, so the path is not
+  reachable through ordinary input; the fix turns "unreachable by luck" into "impossible by
+  construction" (2026-10-27, Tue)
+- ORA results keep the denominators the engine already computed: `DESize` (the GeneRatio
+  denominator -- query genes inside the universe), `UniverseSize` (the BgRatio denominator --
+  universe intersected with annotated genes) and `SetSize` are now columns of the result table.
+  They were computed and then dropped, which is why four users in a row had to ask what the
+  denominators of the `20/207` strings actually are (clusterProfiler#703, #523, #618, #723); all
+  three ratios are now checkable from the table itself, as they long have been in GSEA results
+  (2026-10-27, Tue)
 
 - The multilevel engine's "too few same-side permutations" guard is a **rate**, not a count
   (`src/gsea_multilevel.cpp`). It read `modeFraction < 10` against the raw number of same-side

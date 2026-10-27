@@ -326,41 +326,55 @@ build_nsea_result <- function(base_result,
         set.seed(seed)
     }
     n_set <- length(gs)
-    es_perm <- matrix(0, nrow = n_set, ncol = nPerm)
+    es_perm <- matrix(NA_real_, nrow = n_set, ncol = nPerm)
+    n_done <- 0L
     genes_pool <- names(geneList)
     for (b in seq_len(nPerm)) {
         perm_gl <- setNames(geneList, sample(genes_pool))
         r <- .nsea_diffuse(A, nodes, perm_gl, mode, p, threshold, maxIter)
         if (is.null(r)) {
-            next   # degenerate permutation (should not happen for valid input)
+            ## A skipped permutation must not stay in the null as a fake draw.
+            ## es_perm is initialised to NA (not 0) and the p-value denominator
+            ## counts only permutations that actually ran, so a degenerate draw,
+            ## should one ever occur, shrinks the null instead of biasing it
+            ## toward non-significance; the old code left a 0 in the matrix and
+            ## divided by nPerm regardless.
+            next
         }
         if (specific_weight) {
             r <- r * spw
         }
         r <- sort(r, decreasing = TRUE)
-        es_perm[, b] <- gsea_es_all_cpp(r, unname(gs), exponent, scoreType)
+        n_done <- n_done + 1L
+        es_perm[, n_done] <- gsea_es_all_cpp(r, unname(gs), exponent, scoreType)
         if (verbose && (b %% 100 == 0 || b == nPerm)) {
             message("  permutation ", b, "/", nPerm)
         }
     }
-    
-    ## p-values from the whole-pipeline null
+    if (n_done == 0L) {
+        stop("Every permutation was degenerate: the null could not be built. ",
+             "Check that the network and gene list overlap.", call. = FALSE)
+    }
+    es_perm <- es_perm[, seq_len(n_done), drop = FALSE]
+
+    ## p-values from the whole-pipeline null; the denominator counts the
+    ## permutations that actually ran (n_done), not the ones requested
     if (scoreType == "pos") {
-        pv <- (rowSums(es_perm >= es_obs) + 1) / (nPerm + 1)
+        pv <- (rowSums(es_perm >= es_obs) + 1) / (n_done + 1)
     } else if (scoreType == "neg") {
-        pv <- (rowSums(es_perm <= es_obs) + 1) / (nPerm + 1)
+        pv <- (rowSums(es_perm <= es_obs) + 1) / (n_done + 1)
     } else {
-        pv <- (rowSums(abs(es_perm) >= abs(es_obs)) + 1) / (nPerm + 1)
+        pv <- (rowSums(abs(es_perm) >= abs(es_obs)) + 1) / (n_done + 1)
     }
     pv <- pmin(pv, 1)
-    
+
     ## NES: normalize ES by the mean absolute null ES (set-size aware)
     mean_abs <- rowMeans(abs(es_perm))
     nes <- ifelse(mean_abs > 0, es_obs / mean_abs, NA_real_)
-    
+
     list(ids = ids, sizes = sizes, gs = gs, es = es_obs, nes = nes,
          pvalue = pv, ranked = obs, iterations = iter_obs,
-         nPerm = as.integer(nPerm), seed = seed)
+         nPerm = as.integer(n_done), seed = seed)
 }
 
 # Build the result data.frame for the whole-pipeline NSEA.
