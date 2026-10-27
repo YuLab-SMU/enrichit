@@ -499,6 +499,12 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
     (void)pvalThreshold;
     (void)exponent;
     (void)method;
+
+    // Defence in depth: the R layer rejects eps outside [0, 1], but this function
+    // is reachable directly through Rcpp, and an unclamped eps above 1 puts the
+    // p-value floor above every possible p-value (p = eps > 1 downstream).
+    if (!(eps >= 0.0)) eps = 0.0;        // also catches NaN
+    if (eps > 1.0) eps = 1.0;
     
     int n_sets = gene_sets.size();
     int n_genes = geneList.size();
@@ -651,7 +657,19 @@ Rcpp::DataFrame gsea_multilevel_cpp(const Rcpp::NumericVector& geneList,
             nesVector[p.index] = pathwayNES;
             p.simplePval = pathwayPval;
 
-            if (!std::isfinite(pathwayPval) || modeFraction < 10) {
+            // The "too few same-side permutations" guard is a RATE, not a count:
+            // 10 per 1000 simple permutations, which is exactly fgsea's threshold
+            // at the default nPermSimple = 1000. Written as a raw count it made
+            // *every* pathway NA whenever nPermSimple <= 10, including legal calls:
+            // nPermSimple = 10 returned an all-NA table where nPermSimple = 1000
+            // returned p = 1e-10 on the same input (measured 2026-10-27). A rate is
+            // scale-free, so lowering nPermSimple now costs precision instead of
+            // destroying the result. nPermSimple == 0 is rejected in R and guarded
+            // here rather than dividing by zero.
+            double modeRate = (nPermSimple > 0)
+                ? (double) modeFraction / (double) nPermSimple
+                : 0.0;
+            if (!std::isfinite(pathwayPval) || modeRate < 0.01) {
                 p.simplePval = std::numeric_limits<double>::quiet_NaN();
                 nesVector[p.index] = std::numeric_limits<double>::quiet_NaN();
             } else {

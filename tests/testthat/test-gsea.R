@@ -547,11 +547,25 @@ test_that("gsea_gson reportNA filter behaviour with injected NA p-values", {
     if (length(gsea_src) > 0L) {
         block_start <- grep("^\\s*# Filter by pvalueCutoff:", gsea_src)[[1]]
         block_lines <- gsea_src[block_start:(block_start + 15L)]
-        expect_true(any(grepl("if \\(!reportNA\\)", block_lines)),
-                    "reportNA guard line missing from gsea_gson filter block")
+        ## The NA-row drop was extracted into .gsea_drop_na_rows() so that its
+        ## warning is unit-testable: the input that produces a NA p-value (a
+        ## degenerate permutation null) cannot be built on demand, so the
+        ## behaviour would otherwise have no coverage at all. The fingerprint
+        ## follows the code -- the block must still delegate to that helper, the
+        ## helper must still drop exactly the NA rows, and both must still keep
+        ## the NA-aware pass line.
+        expect_true(any(grepl("\\.gsea_drop_na_rows\\(gsea_res, reportNA\\)",
+                              block_lines)),
+                    "NA-row drop no longer routed through .gsea_drop_na_rows()")
         expect_true(any(grepl("pass_pval <- is\\.na\\(gsea_res\\$pvalue\\) \\|",
                               block_lines)),
                     "NA-aware pvalue pass line missing from gsea_gson filter block")
+        expect_true(any(grepl("res\\[!is\\.na\\(res\\$pvalue\\), , drop = FALSE\\]",
+                              gsea_src)),
+                    "helper no longer drops NA-pvalue rows")
+        expect_true(any(grepl("have no estimable p-value and were dropped",
+                              gsea_src)),
+                    "helper no longer reports how many rows it dropped")
     }
 
     apply_filter <- function(.df, cutoff, reportNA) {

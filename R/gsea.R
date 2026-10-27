@@ -103,6 +103,19 @@ gsea <- function(geneList, gene_sets,
     
     method <- match.arg(method, c("sample", "permute", "multilevel"))
     scoreType <- match.arg(scoreType, c("std", "pos", "neg"))
+
+    ## `eps` is the smallest p-value the multilevel method can estimate, not a
+    ## tolerance, so a value above 1 puts the floor above every possible p-value:
+    ## any pathway that reaches the multilevel refinement comes back with p = eps,
+    ## i.e. p > 1, which then propagates into p.adjust() and -log10() in plots.
+    ## Upstream fgsea clamps silently; erroring is more useful than returning a
+    ## p-value that cannot exist (measured: eps = 2 gave p = 2, 2026-10-27).
+    if (!is.numeric(eps) || length(eps) != 1L || is.na(eps) || eps < 0 || eps > 1) {
+        stop("`eps` must be a single number in [0, 1]; it is the smallest p-value ",
+             "the multilevel method can estimate. Set eps = 0 for the best estimate.",
+             call. = FALSE)
+    }
+
     if (scoreType != "std" && method != "multilevel") {
         warning(
             "scoreType = \"", scoreType, "\" is only supported by method = \"multilevel\"; ",
@@ -141,6 +154,30 @@ gsea <- function(geneList, gene_sets,
         return (NULL)
     }
     gene_sets <- gene_sets[idx]   
+
+    ## A gene set that covers the entire ranked list has no "not in set" positions,
+    ## so its running score never falls back and the enrichment score is undefined:
+    ## the engine built the score with diff = n - k = 0 and returned ES/NES/pvalue
+    ## all NaN, while the NA warning blamed "unbalanced gene-level statistic
+    ## values" -- the wrong cause. fgsea excludes these sets through its default
+    ## maxSize = length(stats) - 1; do the same, and say so, instead of shipping a
+    ## NaN row (measured 2026-10-27: fgsea returned 1 row where enrichit returned
+    ## that row plus an all-NaN set).
+    n_ranked <- length(geneList)
+    covers_all <- lengths(gene_sets) >= n_ranked
+    if (any(covers_all)) {
+        if (verbose) {
+            message(
+                "Excluding ", sum(covers_all), " gene set(s) that cover the entire ",
+                "ranked list (", n_ranked, " genes); their enrichment score is undefined."
+            )
+        }
+        gene_sets <- gene_sets[!covers_all]
+        if (length(gene_sets) == 0) {
+            if (verbose) message("--> return NULL...")
+            return(NULL)
+        }
+    }
 
     gene_set_names <- names(gene_sets)
     
@@ -208,8 +245,13 @@ gsea <- function(geneList, gene_sets,
     if (method == "multilevel" && any(is.na(result$pvalue))) {
         warning(
             "There were ", sum(is.na(result$pvalue)),
-            " pathways for which P-values were not calculated properly due to unbalanced gene-level statistic values. ",
-            "For such pathways pvalue, NES and log2err are set to NA. You can try to increase nPermSimple."
+            " pathways for which P-values were not calculated properly; pvalue, NES ",
+            "and log2err are set to NA for them. The usual cause is an unbalanced ",
+            "gene-level statistic (no genes on one side of the ranking), which makes ",
+            "the permutation null degenerate; a gene set covering the whole ranked ",
+            "list is excluded before this point. You can try to increase nPermSimple, ",
+            "or pass reportNA = TRUE to keep these rows.",
+            call. = FALSE
         )
     }
     if (method == "multilevel" && any(!is.na(result$pvalue) & result$pvalue == eps & is.na(result$log2err))) {
@@ -241,6 +283,17 @@ prepare_gsea_inputs <- function(geneList, scoreType, exponent) {
     if (any(!is.finite(geneList))) {
         stop("Not all stats values are finite numbers")
     }
+    ## An all-zero ranking has no order, so every enrichment score is undefined.
+    ## It used to reach the engine: `scale_fgsea_ranks()` computed 2^30 / 0 = Inf,
+    ## every rank became NA, and the multilevel path returned a full table of
+    ## ES = NaN with no error -- a silently useless result that looks like an
+    ## ordinary answer to anyone who does not inspect enrichmentScore
+    ## (measured 2026-10-27).
+    if (!any(geneList != 0)) {
+        stop("All gene-level statistics are zero, so the ranking has no order and ",
+             "no enrichment score is defined. Check that the statistic was not ",
+             "lost or centred away upstream.", call. = FALSE)
+    }
     if (isTRUE(is.unsorted(rev(geneList)))) {
         warning("geneList is not sorted in descending order. Sorting it now.")
         geneList <- sort(geneList, decreasing = TRUE)
@@ -268,13 +321,52 @@ prepare_gsea_inputs <- function(geneList, scoreType, exponent) {
     )
 }
 
+#' Drop gene sets whose p-value could not be estimated
+#'
+#' Rows dropped here are invisible in the returned object, so the count is
+#' reported: an `NA` p-value comes from the multilevel engine declining to
+#' estimate (degenerate permutation null) rather than from a filter the caller
+#' asked for, and a silently shorter table reads as "these were the only gene
+#' sets tested". Extracted from `gsea_gson()` so the message can be tested
+#' without having to construct an input whose null is degenerate.
+#'
+#' @param res a GSEA result data.frame, or NULL
+#' @param reportNA keep the NA rows instead of dropping them
+#' @return `res`, with NA-p-value rows removed when `reportNA` is FALSE
+#' @noRd
+.gsea_drop_na_rows <- function(res, reportNA) {
+    if (isTRUE(reportNA) || is.null(res) || nrow(res) == 0L) {
+        return(res)
+    }
+    n_na <- sum(is.na(res$pvalue))
+    if (n_na > 0) {
+        warning(
+            n_na, " of ", nrow(res),
+            " gene set(s) have no estimable p-value and were dropped ",
+            "(pvalue, NES and log2err are NA for them). Pass ",
+            "reportNA = TRUE to keep them, or raise nPermSimple.",
+            call. = FALSE
+        )
+    }
+    res[!is.na(res$pvalue), , drop = FALSE]
+}
+
 scale_fgsea_ranks <- function(geneList, exponent) {
     ranks <- abs(geneList)^exponent
 
     # Mirror fgsea::prepareStats(): scale to integer-like values based on the
     # total weight rather than a fixed multiplier, which keeps the multilevel
     # backend numerically closer to the long-used fgsea implementation.
-    scaleCoeff <- 2^30 / sum(ranks)
+    #
+    # The total can only be 0 for an all-zero ranking, which `prepare_gsea_inputs()`
+    # rejects before reaching here; the guard keeps a direct caller from turning
+    # the whole vector into NA through 2^30 / 0 = Inf.
+    total <- sum(ranks)
+    if (!is.finite(total) || total <= 0) {
+        stop("Cannot scale the ranked statistic: the total weight is ", total,
+             " (all statistics are zero).", call. = FALSE)
+    }
+    scaleCoeff <- 2^30 / total
     if (scaleCoeff >= 1) {
         scaleCoeff <- floor(scaleCoeff)
     }
@@ -408,9 +500,7 @@ gsea_gson <- function(geneList,
     # cutoff comparison, so pvalueCutoff = 1 together with reportNA = TRUE
     # returns every gene set that passed size filtering. (YuLab-SMU/DOSE#88)
     if (!is.null(pvalueCutoff)) {
-        if (!reportNA) {
-            gsea_res <- gsea_res[!is.na(gsea_res$pvalue), ]
-        }
+        gsea_res <- .gsea_drop_na_rows(gsea_res, reportNA)
         pass_pval <- is.na(gsea_res$pvalue) | (gsea_res$pvalue <= pvalueCutoff)
         pass_padj <- is.na(gsea_res$p.adjust) | (gsea_res$p.adjust <= pvalueCutoff)
         gsea_res <- gsea_res[pass_pval & pass_padj, ]

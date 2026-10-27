@@ -1,4 +1,33 @@
-# enrichit 0.2.7.001
+# enrichit 0.2.7.002
+
+- The multilevel engine's "too few same-side permutations" guard is a **rate**, not a count
+  (`src/gsea_multilevel.cpp`). It read `modeFraction < 10` against the raw number of same-side
+  permutations, which matches fgsea exactly at the default `nPermSimple = 1000` -- but with any
+  smaller `nPermSimple` it turned *every* pathway `NA`: `nPermSimple = 10` returned an all-NA table
+  where `nPermSimple = 1000` returned `p = 1e-10` on the same input (measured 2026-10-27). The guard
+  is now `modeRate < 0.01`, scale-free, so lowering `nPermSimple` costs precision instead of
+  destroying the result; at the default the two forms are identical, and a 200-set input produced
+  byte-identical results across all nine reported columns (2026-10-27, Tue)
+- `gsea()` rejects `eps` outside `[0, 1]` instead of passing it on: `eps` is the smallest p-value the
+  multilevel method can estimate, so `eps = 2` put the floor above every possible p-value and strong
+  pathways came back with `p = 2`, which then flowed into `p.adjust()` and `-log10()` in plots
+  (fgsea clamps silently; erroring is more useful). The C++ entry point clamps as defence in depth,
+  since it is reachable directly through Rcpp (2026-10-27, Tue)
+- An **all-zero** ranked statistic is an error, not a table of `NaN`. `scale_fgsea_ranks()` computed
+  `2^30 / 0 = Inf`, every rank became `NA`, and the multilevel path returned a full result frame with
+  `ES = NaN` and no message. The all-zero case is rejected in `prepare_gsea_inputs()` and the scaler
+  guards a direct caller; a ranking that is zero except for one gene remains valid (2026-10-27, Tue)
+- A gene set covering the **entire ranked list** is excluded with a message instead of returning
+  `ES = NaN`: with no "not in set" positions the running score never falls back, so the score is
+  undefined. fgsea excludes such sets through its default `maxSize = length(stats) - 1`; enrichit
+  returned the set as an all-NaN row and the accompanying warning blamed "unbalanced gene-level
+  statistic values" -- the wrong cause. The `NA` warning now describes the real causes and mentions
+  `reportNA = TRUE` (2026-10-27, Tue)
+- Dropping gene sets whose p-value could not be estimated now **says how many went**: with the default
+  `reportNA = FALSE` a silently shorter table read as "these were the only gene sets tested". The drop
+  is extracted into `.gsea_drop_na_rows()` so the message is unit-testable without constructing a
+  degenerate permutation null; the source-fingerprint test in `test-gsea.R` follows the extraction
+  (2026-10-27, Tue)
 
 - `get_enriched()` applies `qvalueCutoff` **row by row** instead of switching it off wholesale
   when any q-value is `NA`. The old guard (`if (!any(is.na(...)))`) meant a single term whose
