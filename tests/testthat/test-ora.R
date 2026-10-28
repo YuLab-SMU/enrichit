@@ -48,6 +48,7 @@ test_that("ORA function returns correct p-values and format", {
 })
 
 test_that("ora_gson excludes zero-overlap sets from multiple testing correction", {
+  skip_if_not_installed("gson")
   gsid2gene <- data.frame(
     gsid = c("set1", "set1", "set2", "set2", "set3", "set3"),
     gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4", "Gene5"),
@@ -165,6 +166,7 @@ test_that("ORA results carry a Fisher odds ratio (#501)", {
 ## full annotated gene list as `universe` (which still takes the intersection
 ## branch) must give exactly the same result as passing none.
 test_that("ora_gson without universe equals ora_gson with the full gene universe", {
+  skip_if_not_installed("gson")
   gsid2gene <- data.frame(
     gsid = c("set1", "set1", "set2", "set2", "set3", "set3", "set4", "set4"),
     gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4", "Gene5", "Gene1", "Gene4"),
@@ -208,6 +210,7 @@ test_that("ora_gson without universe equals ora_gson with the full gene universe
 ## "the background was restricted". This pins the latter: a universe that
 ## removes a gene must still shrink the gene sets.
 test_that("ora_gson still intersects when the universe removes annotated genes", {
+  skip_if_not_installed("gson")
   gsid2gene <- data.frame(
     gsid = c("set1", "set1", "set2", "set2", "set3"),
     gene = c("Gene1", "Gene2", "Gene2", "Gene3", "Gene4"),
@@ -273,4 +276,57 @@ test_that("ora_cpp keeps the input gene order in geneID", {
     ## And it is stable across repeated calls in one process.
     again <- enrichit:::ora_cpp(genes, c("g1", "g2", "g3", "g4"), sets, c("s1", "s2"))
     expect_identical(out$geneID, again$geneID)
+})
+
+test_that("ORA results carry the denominators all three ratios are computed from", {
+    skip_if_not_installed("gson")
+    ## Fully specified input, so every expected number below can be worked out by
+    ## hand rather than read back off the result:
+    ##   universe  g1..g100      (100 genes)
+    ##   query     g1..g10       (10 genes)
+    ##   set A     g1..g5        (5 genes, all in the query)
+    ##   set B     g6..g25       (20 genes, 5 of them in the query)
+    ## The annotated domain is A union B = g1..g25, so the background the ratios
+    ## use is 25 genes even though the universe offered was 100 -- that
+    ## intersection is exactly what four users had to ask about
+    ## (clusterProfiler#703, #523, #618, #723), and it is why UniverseSize is
+    ## reported instead of leaving the 25 implicit.
+    u <- paste0("g", 1:100)
+    query <- paste0("g", 1:10)
+    sets <- list(A = paste0("g", 1:5), B = paste0("g", 6:25))
+    g <- gson::gson(
+        gsid2gene = data.frame(gsid = rep(names(sets), lengths(sets)),
+                               gene = unlist(sets, use.names = FALSE)),
+        gsid2name = data.frame(gsid = names(sets), name = names(sets))
+    )
+    res <- ora_gson(query, pvalueCutoff = 1, universe = u, gson = g,
+                    qvalueCutoff = 1, minGSSize = 1)
+    df <- res@result
+
+    expect_identical(df$ID, c("A", "B"))
+
+    ## the denominators, stated as values
+    expect_identical(df$SetSize, c(5L, 20L))
+    expect_identical(df$DESize, c(10L, 10L))
+    expect_identical(df$UniverseSize, c(25L, 25L))
+
+    ## and the three ratios are reproducible from them
+    expect_identical(df$GeneRatio, c("5/10", "5/10"))
+    expect_identical(df$BgRatio, c("5/25", "20/25"))
+    expect_identical(df$RichFactor, c(1, 0.25))
+
+    ## the identities hold for every row, which is the property the columns exist
+    ## to make checkable
+    expect_identical(df$Count, as.integer(sub("/.*", "", df$GeneRatio)))
+    expect_identical(df$GeneRatio, paste0(df$Count, "/", df$DESize))
+    expect_identical(df$BgRatio, paste0(df$SetSize, "/", df$UniverseSize))
+    expect_identical(df$RichFactor, df$Count / df$SetSize)
+
+    ## the original column set is untouched: the denominators were appended
+    expect_identical(
+        colnames(df)[1:13],
+        c("ID", "Description", "GeneRatio", "BgRatio", "RichFactor",
+          "FoldEnrichment", "oddsRatio", "zScore", "pvalue", "p.adjust",
+          "qvalue", "geneID", "Count")
+    )
 })

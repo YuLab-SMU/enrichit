@@ -12,3 +12,6 @@ bayes_enrich_method.md
 .github/
 .vmark/
 .vmark
+
+# agent instruction files, kept in git but not shipped in the tarball
+^AGENTS\.md$

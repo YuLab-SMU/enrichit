@@ -1,7 +1,11 @@
 library(testthat)
 library(enrichit)
 
+## gson is a Suggests package
+skip_without_gson <- function() skip_if_not_installed("gson")
+
 test_that("TERM2NAME maps GSON term ids to names and falls back to ids", {
+  skip_without_gson()
   x <- gson::gson(
     gsid2gene = data.frame(
       gsid = c("T1", "T1", "T2", "T3"),
@@ -21,6 +25,7 @@ test_that("TERM2NAME maps GSON term ids to names and falls back to ids", {
 })
 
 test_that("TERMID2EXTID returns genes grouped by requested GSON term ids", {
+  skip_without_gson()
   x <- gson::gson(
     gsid2gene = data.frame(
       gsid = c("T1", "T1", "T2", "T3"),

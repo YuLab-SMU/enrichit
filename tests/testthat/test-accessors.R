@@ -137,8 +137,9 @@ test_that("as.data.frame() keeps rows with NA pvalue/p.adjust intact", {
     kept <- as.data.frame(make(c(0.01, 0.04, 0.5), c(0.01, 0.03, 0.4)))
     expect_identical(kept$ID, c("A", "B"))
 
-    # the qvalue branch already skipped itself on NA and still does
+    # a partially-NA qvalue column filters row by row and says so
     z <- make(c(0.01, 0.02, 0.03), c(0.01, 0.02, 0.03))
     z@result$qvalue <- c(0.01, NA, NA)
-    expect_equal(nrow(as.data.frame(z)), 3L)
+    expect_warning(as.data.frame(z), "bypass qvalueCutoff")
+    expect_equal(nrow(suppressWarnings(as.data.frame(z))), 3L)
 })

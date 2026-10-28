@@ -70,7 +70,9 @@ test_that("as_enrichResult accepts common column aliases and separators", {
         Genes = c("g1; g2", "g3;g4"),
         stringsAsFactors = FALSE
     )
-    x <- as_enrichResult(df)
+    ## no `gene` supplied, so GeneRatio's denominator is documented as the
+    ## union of overlap genes; the converter says so
+    expect_warning(x <- as_enrichResult(df), "query genes not provided")
     expect_equal(x@result$ID, c("GO:1", "GO:2"))
     expect_equal(x@result$geneID, c("g1/g2", "g3/g4"))
     expect_equal(x@result$Count, c(2, 2))
@@ -162,10 +164,18 @@ test_that("as_gseaResult validates geneList", {
         ),
         "enrichmentScore"
     )
-    expect_error(
-        as_gseaResult(data.frame(ID = "P1", ES = 0.5, pvalue = NA_real_), geneList = stats),
-        "p-value"
+    ## the ranking is unsorted and all-positive: both are diagnosed by warning
+    ## before the p-value error is reached. Name them individually -- a bare "."
+    ## also passes on any unrelated diagnostic, which pins nothing.
+    w <- capture_warnings(
+        expect_error(
+            as_gseaResult(data.frame(ID = "P1", ES = 0.5, pvalue = NA_real_),
+                          geneList = stats),
+            "p-value"
+        )
     )
+    expect_match(paste(w, collapse = " | "), "not sorted")
+    expect_match(paste(w, collapse = " | "), "greater than zero")
 })
 
 test_that("as_enrichResult guards invalid input", {
@@ -215,8 +225,11 @@ test_that("converted results do not claim a clusterProfiler citation", {
         geneSets = list(T1 = "g1")
     ))
 
-    ora_output <- capture.output(show(ora))
-    gsea_output <- capture.output(show(gsea))
+    ## one term is too few for a q-value estimate, so both the qvalue message and
+    ## the "cutoff not applied" warning are expected; the assertion is about the
+    ## citation lines, not about those diagnostics
+    ora_output <- capture.output(suppressMessages(suppressWarnings(show(ora))))
+    gsea_output <- capture.output(suppressMessages(suppressWarnings(show(gsea))))
     expect_false(any(grepl("clusterProfiler", ora_output, fixed = TRUE)))
     expect_false(any(grepl("clusterProfiler", gsea_output, fixed = TRUE)))
 })

@@ -294,17 +294,23 @@ test_that("gsea multilevel is reproducible with a fixed seed", {
     Mid = names(stats)[sample(200:300, 30)]
   )
 
-  r1 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
-             nPermSimple = 200, seed = 42, verbose = FALSE)
-  r2 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
-             nPermSimple = 200, seed = 42, verbose = FALSE)
+  ## the eps-attainability notice and q-value diagnostics are not what this test
+  ## is about; it compares two runs for identity
+  r1 <- suppressWarnings(suppressMessages(
+      gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+           nPermSimple = 200, seed = 42, verbose = FALSE)))
+  r2 <- suppressWarnings(suppressMessages(
+      gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+           nPermSimple = 200, seed = 42, verbose = FALSE)))
   expect_identical(r1, r2)
 
   # seed = TRUE uses a fixed default seed and is reproducible too
-  r3 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
-             nPermSimple = 200, seed = TRUE, verbose = FALSE)
-  r4 <- gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
-             nPermSimple = 200, seed = TRUE, verbose = FALSE)
+  r3 <- suppressWarnings(suppressMessages(
+      gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+           nPermSimple = 200, seed = TRUE, verbose = FALSE)))
+  r4 <- suppressWarnings(suppressMessages(
+      gsea(geneList = stats, gene_sets = gene_sets, method = "multilevel",
+           nPermSimple = 200, seed = TRUE, verbose = FALSE)))
   expect_identical(r3, r4)
 })
 
@@ -322,12 +328,14 @@ test_that("gsea_gson forwards seed and is reproducible", {
   stats <- sort(rnorm(500), decreasing = TRUE)
   names(stats) <- paste0("Gene", 1:500)
 
-  e1 <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
-                  nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
-                  maxGSSize = 100, verbose = FALSE)
-  e2 <- gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
-                  nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
-                  maxGSSize = 100, verbose = FALSE)
+  e1 <- suppressWarnings(suppressMessages(
+      gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
+                maxGSSize = 100, verbose = FALSE)))
+  e2 <- suppressWarnings(suppressMessages(
+      gsea_gson(geneList = stats, gson = gson_obj, method = "multilevel",
+                nPermSimple = 200, seed = 7, pvalueCutoff = 1, minGSSize = 1,
+                maxGSSize = 100, verbose = FALSE)))
   expect_identical(e1@result, e2@result)
 })
 
@@ -529,22 +537,30 @@ test_that("gsea_gson reportNA filter behaviour with injected NA p-values", {
     # logic lines to the ones we use below. This guards against drift:
     # if someone edits gsea_gson's filter without updating this test, the
     # fingerprint won't match and we fail fast.
-    gsea_src <- readLines(system.file("R", "gsea.R", package = "enrichit",
-                                      mustWork = FALSE))
-    if (length(gsea_src) == 0L) {
-        # Running against an installed enrichit where source isn't kept;
-        # fall back to the dev tree path.
-        gsea_src <- readLines(
-            system.file("..", "R", "gsea.R", package = "enrichit", mustWork = FALSE)
-        )
+    # An installed package does not ship R/ sources, so this guard can only run
+    # where the source tree is reachable: devtools::load_all() shims system.file,
+    # and under R CMD check the file is found only when the .Rcheck directory
+    # happens to sit inside the package directory. When it was unreachable the
+    # guard used to fall through silently -- readLines("") emitted a warning
+    # nobody read and every assertion below was skipped, so the drift protection
+    # was absent exactly where it mattered. Locate the source explicitly and skip
+    # loudly if it cannot be found.
+    find_gsea_src <- function() {
+        for (p in c(
+            system.file("R", "gsea.R", package = "enrichit", mustWork = FALSE),
+            system.file("..", "R", "gsea.R", package = "enrichit", mustWork = FALSE),
+            file.path("..", "..", "R", "gsea.R"),
+            file.path("R", "gsea.R")
+        )) {
+            if (nzchar(p) && file.exists(p)) return(readLines(p))
+        }
+        character(0)
     }
+    gsea_src <- find_gsea_src()
     if (length(gsea_src) == 0L) {
-        # Final fallback: look in the checkout next to tests/testthat.
-        candidate <- normalizePath(
-            file.path("..", "..", "R", "gsea.R"), mustWork = FALSE)
-        if (file.exists(candidate)) gsea_src <- readLines(candidate)
+        skip("gsea.R source is not reachable from the test working directory")
     }
-    if (length(gsea_src) > 0L) {
+    {
         block_start <- grep("^\\s*# Filter by pvalueCutoff:", gsea_src)[[1]]
         block_lines <- gsea_src[block_start:(block_start + 15L)]
         ## The NA-row drop was extracted into .gsea_drop_na_rows() so that its

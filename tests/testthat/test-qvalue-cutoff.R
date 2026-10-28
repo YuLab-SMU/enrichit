@@ -69,47 +69,33 @@ test_that("qvalueCutoff = 1 keeps every row, NA or not", {
     expect_identical(nrow(r@result), 3L)
 })
 
-test_that("the gseaResult path behaves the same", {
-    make_gsea <- function(qvalue, qvalueCutoff = 0.02) {
-        result_df <- data.frame(
-            ID = c("Top", "Bottom"),
-            Description = c("Top pathway", "Bottom pathway"),
-            setSize = c(2L, 2L),
-            enrichmentScore = c(0.7, -0.6),
-            NES = c(1.8, -1.5),
-            pvalue = c(0.01, 0.03),
-            p.adjust = c(0.02, 0.03),
-            qvalue = qvalue,
-            rank = c(2L, 5L),
-            leading_edge = rep("tags=100%, list=40%, signal=70%", 2),
-            core_enrichment = c("GeneA/GeneB", "GeneD/GeneE"),
-            stringsAsFactors = FALSE
-        )
-        rownames(result_df) <- result_df$ID
-        new("gseaResult",
-            result = result_df,
-            organism = "human",
-            setType = "TEST",
-            geneSets = list(Top = c("GeneA", "GeneB"), Bottom = c("GeneD", "GeneE")),
-            geneList = structure(c(2, 1, -1, -2), .Names = paste0("Gene", LETTERS[1:4])),
-            keytype = "SYMBOL",
-            permScores = matrix(numeric(0), nrow = 0, ncol = 0),
-            params = list(),
-            gene2Symbol = character(0),
-            readable = FALSE,
-            termsim = matrix(0, nrow = 0, ncol = 0),
-            method = "GSEA",
-            dr = list()
-        )
-    }
-
-    ## one NA among two: the non-NA row that fails the cutoff is dropped,
-    ## the NA row bypasses with a warning
-    warnings <- capture_warnings(
-        r <- get_enriched(make_gsea(c(0.02, NA), qvalueCutoff = 0.01))
+test_that("get_enriched() is an enrichResult-only filter", {
+    ## gseaResult has no pvalueCutoff/qvalueCutoff slots -- its cutoffs live in
+    ## @params and are applied at construction in gsea_gson(). An earlier version
+    ## of this file assumed the helper served both classes; it does not, and the
+    ## test that asserted otherwise could never have run.
+    g <- new("gseaResult",
+        result = data.frame(ID = "Top", pvalue = 0.01, stringsAsFactors = FALSE),
+        organism = "human",
+        setType = "TEST",
+        geneSets = list(Top = c("GeneA", "GeneB")),
+        geneList = structure(c(2, -2), .Names = c("GeneA", "GeneB")),
+        keytype = "SYMBOL",
+        permScores = matrix(numeric(0), nrow = 0, ncol = 0),
+        params = list(pvalueCutoff = 1, qvalueCutoff = 1),
+        gene2Symbol = character(0),
+        readable = FALSE,
+        termsim = matrix(0, nrow = 0, ncol = 0),
+        method = "GSEA",
+        dr = list()
     )
-    expect_setequal(rownames(r@result), "Bottom")
-    expect_true(any(grepl("bypass qvalueCutoff", warnings)))
+    expect_error(get_enriched(g), "pvalueCutoff")
+
+    ## and the slots it does read are the enrichResult ones
+    expect_true(all(c("pvalueCutoff", "qvalueCutoff") %in%
+                    slotNames("enrichResult")))
+    expect_false(any(c("pvalueCutoff", "qvalueCutoff") %in%
+                     slotNames("gseaResult")))
 })
 
 test_that("an empty result does not blame q-value estimation", {

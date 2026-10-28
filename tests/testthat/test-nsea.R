@@ -190,3 +190,63 @@ test_that("nsea_gson whole-pipeline mode reports calibrated p-values on null dat
     # on random data the p-values should not all be extreme
     expect_true(mean(res@result$pvalue < 0.05) < 0.5)
 })
+
+test_that("a skipped permutation shrinks the null instead of biasing it", {
+    ## The degenerate path cannot be reached through ordinary input: the null is
+    ## built by permuting gene labels, and sum(geneList[common]) is invariant
+    ## under permutation, so .nsea_diffuse never declines. That is why the fix
+    ## (initialise the null matrix to NA, count only the permutations that ran,
+    ## and divide by that count) used to be unverifiable. Mocking .nsea_diffuse to
+    ## decline the way it would on a real degenerate draw is the only way to
+    ## exercise those two lines, and it is worth doing: with the old code the two
+    ## skipped draws stayed in the null as zeros and the denominator stayed at
+    ## nPerm, which biases every pathway toward non-significance.
+    skip_if_not_installed("testthat", "3.1.6")
+    orig <- get(".nsea_diffuse", asNamespace("enrichit"))
+    edges <- data.frame(
+        from = c("A", "B", "C", "D"), to = c("B", "C", "D", "A"),
+        weight = rep(1, 4), stringsAsFactors = FALSE
+    )
+    geneList <- sort(c(A = 1.2, B = 0.8, C = 0.5, D = -1.0), decreasing = TRUE)
+    gene_sets <- list(P = c("A", "B"))
+
+    ## 5 permutations requested, 2 decline: the reported count must be 3, and the
+    ## p-value denominator must be 4 (n_done + 1), not 6 (nPerm + 1)
+    calls <- 0L
+    res <- with_mocked_bindings(
+        nsea(geneList, edges, gene_sets, mode = "signed", p = 0.5,
+             minGSSize = 1, maxGSSize = 10, nPerm = 5, seed = 1, verbose = FALSE),
+        .nsea_diffuse = function(...) {
+            calls <<- calls + 1L
+            if (calls == 1L) return(orig(...))   # the observed diffusion
+            if (calls <= 3L) return(NULL)        # two degenerate draws
+            orig(...)
+        },
+        .package = "enrichit"
+    )
+    expect_identical(calls, 6L)                      # 1 observed + 5 permutation
+    expect_identical(res@params$nPerm, 3L)           # ran, not requested
+    ## The p-value must lie on the 1/(n_done + 1) grid: with 3 draws that is
+    ## k/4, whereas the old denominator (nPerm + 1 = 6) could only produce k/6.
+    ## Asserting the grid rather than a particular value keeps the test
+    ## independent of which draws happen to exceed the observed score.
+    ## the parentheses matter: %in% binds tighter than /, so
+    ## `x %in% (1:4) / 4` parses as `(x %in% 1:4) / 4` and tests nothing
+    expect_true(res@result$pvalue %in% ((1:4) / 4))
+    expect_equal(res@result$pvalue * 4, round(res@result$pvalue * 4))
+
+    ## every draw degenerating is an error, not a null built from nothing
+    calls2 <- 0L
+    expect_error(
+        with_mocked_bindings(
+            nsea(geneList, edges, gene_sets, mode = "signed", p = 0.5,
+                 minGSSize = 1, maxGSSize = 10, nPerm = 5, seed = 1, verbose = FALSE),
+            .nsea_diffuse = function(...) {
+                calls2 <<- calls2 + 1L
+                if (calls2 == 1L) orig(...) else NULL
+            },
+            .package = "enrichit"
+        ),
+        "Every permutation was degenerate"
+    )
+})

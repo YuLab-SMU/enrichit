@@ -70,11 +70,22 @@ calculate_qvalue <- function(pvals) {
         return(qv)
     }
 
-    if (inherits(last_err, "error")) {
-        warning("qvalue::qvalue() failed, returning NA for qvalue. Error: ", conditionMessage(last_err))
+    ## A message, not a warning. q-value estimation legitimately fails when the
+    ## p-values are all small and nearly equal (p * n / rank is then constant, so
+    ## qvalue's spline fit has no variance to smooth). Nothing is wrong with the
+    ## call: every gene set was still tested, p.adjust is still valid, and the
+    ## result table itself shows the NA column. A warning says "look at this,
+    ## something may be off"; a documented limitation of Storey's pi0 estimator is
+    ## not that, and it fired once per result construction -- at eight call sites
+    ## -- which in a test suite buries the diagnostics that do matter
+    ## (measured 2026-10-27: one message per as_enrichResult(), none on print).
+    reason <- if (inherits(last_err, "error")) {
+        conditionMessage(last_err)
     } else {
-        warning("qvalue::qvalue() failed, returning NA for qvalue. This may be due to p-value distribution.")
+        "the p-value distribution does not allow it (all p-values are close together)"
     }
+    message("qvalue::qvalue() could not estimate q-values; the qvalue column is NA ",
+            "and p.adjust is unaffected. Reason: ", reason)
     return(qv)
 }
 

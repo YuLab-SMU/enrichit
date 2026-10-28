@@ -1,6 +1,6 @@
 # enrichit: C++ Implementations of Functional Enrichment Analysis
 
-`enrichit` provides C++ implementations of functional enrichment analysis methods and S4 result classes used by the `clusterProfiler` family. It supports ORA, GSEA, weighted enrichment, network-based enrichment, multilayer network workflows, and multi-omics aggregation and contribution analysis.
+`enrichit` provides C++ implementations of functional enrichment analysis methods and S4 result classes used by the `clusterProfiler` family. It supports ORA, GSEA, design-aware GSEA on RNA-seq counts, weighted enrichment, network-based enrichment, multilayer network workflows, and multi-omics aggregation and contribution analysis.
 
 ## Installation
 
@@ -13,9 +13,10 @@ devtools::install_github("YuLab-SMU/enrichit")
 
 ## Main components
 
-`enrichit` organizes its functions around four components:
+`enrichit` organizes its functions around five components:
 
 - **Core enrichment engines**: ORA, GSEA, weighted ORA/GSEA, and GSON-aware variants.
+- **Design-aware and score-level GSEA**: `dsea()` for enrichment on a count matrix plus a design (rank by the requested contrast, then GSEA), and `dsea_scores()`/`ssgsea_scores()` for per-sample gene set scores.
 - **Network-aware enrichment**: single-layer `nsea()` and multi-layer `mnsea()` workflows based on Random Walk with Restart.
 - **Multi-omics integration**: early fusion at the feature level and late fusion at the pathway level.
 - **Contribution and topology outputs**: contribution tables and topology-aware extraction helpers for visualization in `enrichplot`.
@@ -25,6 +26,8 @@ devtools::install_github("YuLab-SMU/enrichit")
 - **Implementation**: Algorithms are implemented in `C++` via `Rcpp`, with sparse network propagation using `RcppEigen`.
 - **ORA**: standard hypergeometric ORA with optional weighted ORA through Wallenius' noncentral hypergeometric distribution.
 - **GSEA**: multilevel, permutation, and adaptive strategies for ranked enrichment analysis.
+- **Design-aware GSEA**: `dsea()` takes a count matrix or a `DESeqDataSet` plus a design from `model.matrix()` (rownames must match the sample names), variance-stabilises the counts (`vst` or `rlog`), ranks genes by the requested contrast, and runs the GSEA engine already in the package. It returns a plain data.frame -- GSEA's table plus `padj` and `contrast` -- so it can be filtered and plotted like any other GSEA result. `dsea_scores()` and `ssgsea_scores()` are the other half: a gene set x sample score matrix for analyses that need samples rather than one contrast.
+- **DESeq2 adapters**: `as_ranked()` and `as_genes()` turn `DESeqResults` and fitted `DESeqDataSet` objects into a ranking or a gene vector, so a `dsea()` analysis can start from an existing `DESeq2` result; extra arguments are passed on to `DESeq2::results()`, so the contrast uses its `c("factor", "numerator", "denominator")` form. `DESeq2` is suggested, not imported.
 - **GSON support**: native `ora_gson()` and `gsea_gson()` interfaces for structured gene set collections.
 - **NSEA**: `nsea()` and `nsea_gson()` for network-ranked enrichment on a single graph, including `mode = "signed"` for bidirectional propagation.
 - **Multi-layer topology fusion**: `mnsea()` and `mnsea_gson()` for multiplex or heterogeneous network propagation across multiple layers.
@@ -48,6 +51,12 @@ devtools::install_github("YuLab-SMU/enrichit")
 - `ora_gson(..., weight = )`
 - `gsea(..., weight = )`
 - `gsea_gson(..., weight = )`
+
+### Design-aware and score-level GSEA
+
+- `dsea()`
+- `dsea_scores()`, `ssgsea_scores()`
+- `as_ranked()`, `as_genes()`
 
 ### Network-aware enrichment
 
@@ -80,6 +89,8 @@ The package returns the following S4 result classes:
 - `gseaResult` for ranked enrichment workflows
 - `nseaResult` for single-network propagation plus enrichment
 - `mnseaResult` for multi-layer propagation, collapsed scores, and cached explanation tables
+
+`dsea()` is the exception on the other side: it returns a plain data.frame rather than a `gseaResult`. `dsea_scores()` and `ssgsea_scores()` return a `DseaScores` object, an S3 list holding the gene set x sample score matrix (`$scores`) and the metadata it was built with (`$meta`).
 
 These classes are used across the `clusterProfiler` family:
 

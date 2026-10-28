@@ -139,7 +139,10 @@ test_that("dsea finds a planted set and returns a GSEA table", {
               lapply(seq_len(40), function(i) paste0("g", sample(400:G, 80))))
     names(sets)[-1] <- paste0("BG", seq_len(40))
 
-    res <- dsea(dds, sets, design = two_group(n), contrast = "cond", seed = 7, verbose = FALSE)
+    ## the planted set is strong enough to reach the eps floor, which gsea()
+    ## announces; the assertion is about the returned table
+    res <- suppressWarnings(suppressMessages(
+        dsea(dds, sets, design = two_group(n), contrast = "cond", seed = 7, verbose = FALSE)))
     expect_s3_class(res, "data.frame")
     ## gsea() returns ID/NES/pvalue/setSize/... and no multiplicity column;
     ## dsea() adds `padj` so that the front end hands back something directly
